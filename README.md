@@ -1,44 +1,23 @@
-# GPT Evaluator
+# GPT-Evaluator
 
-<p align="center">
-  <img src="./public/favicon/favicon-96x96.png" alt="GPT Evaluator Logo" width="80" height="80" />
-</p>
+A Chrome extension that helps evaluate and analyze AI responses in real-time. This tool provides insights into the quality and accuracy of AI-generated content, making it easier to assess and improve AI interactions.
 
-<p align="center">
-  <b>A sleek Chrome extension for validating and evaluating AI-generated responses</b>
-</p>
+## Features
 
-<p align="center">
-  <img src="https://img.shields.io/badge/React-19-blue?logo=react" alt="React 19" />
-  <img src="https://img.shields.io/badge/Tailwind-4-38B2AC?logo=tailwind-css" alt="Tailwind CSS" />
-  <img src="https://img.shields.io/badge/Framer%20Motion-latest-ff69b4" alt="Framer Motion" />
-  <img src="https://img.shields.io/badge/Chrome-Extension-4285F4?logo=google-chrome" alt="Chrome Extension" />
-</p>
+- **Real-time Evaluation**: Instantly evaluate AI responses against user inputs
+- **Live Chat Scanning**: Monitor and analyze GPT conversations in real-time
+- **History Tracking**: Keep track of past evaluations and their results
+- **Multi-Provider Support**: Works with both OpenAI and Claude AI providers
+- **Modern UI**: Beautiful and intuitive interface with smooth animations
+- **Configurable**: Easy setup with API key management
 
----
+## Installation
 
-## ✨ Features
-
-- **Real-time Validation** - Evaluate AI responses against user prompts
-- **Multiple AI Support** - Configure and use both OpenAI and Claude APIs
-- **History Tracking** - Review past evaluations and results
-- **Secure Storage** - API keys stored locally, never sent to servers
-
-## 🚀 Installation
-
-### Development Mode
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/GPT-Evaluator.git
-   cd GPT-Evaluator
-   ```
-
+1. Clone this repository
 2. Install dependencies:
    ```bash
    npm install
    ```
-
 3. Build the extension:
    ```bash
    npm run build
@@ -46,65 +25,47 @@
    > If you need to run it locally with hot reload, run `npm run dev` and select the dist as same as the build.
 
 4. Load the extension in Chrome:
-   - Open Chrome and navigate to `chrome://extensions/`
+   - Open Chrome and go to `chrome://extensions/`
    - Enable "Developer mode"
-   - Click "Load unpacked" and select the `dist` folder from the project
+   - Click "Load unpacked"
+   - Select the `dist` directory from the build output
 
-### Production Use
+## Usage
 
-*Coming soon to the Chrome Web Store!*
+1. **Basic Evaluation**:
+   - Enter your prompt in the "User Input" field
+   - Paste the AI response in the "AI Response" field
+   - Get instant evaluation results
 
-## 💡 Usage
+2. **Live Scanning**:
+   - Click the play button to start monitoring ChatGPT conversations
+   - View real-time evaluation metrics and scores
+   - Track conversation quality over time
 
-1. **Input Your Text**
-   - Enter your original prompt in the "User Input" field
-   - Paste the AI-generated response in the "AI Response" field
+3. **Configuration**:
+   - Add your API keys for OpenAI and/or Claude
+   - Customize evaluation settings
+   - Manage your preferences
 
-2. **Generate Evaluation**
-   - Click the "Generate Evaluation" button to analyze the response quality
+## Development
 
-3. **View Results**
-   - See detailed analysis and suggestions for improvement
-   - Add your own feedback to save with the evaluation
+This project is built with:
+- React
+- TypeScript
+- Framer Motion for animations
+- Tailwind CSS for styling
+- Chrome Extension APIs
 
-4. **Configure API Keys**
-   - Access settings by clicking the gear icon
-   - Add your OpenAI and Claude API keys for enhanced evaluation
-
-## 🛠️ Tech Stack
-
-- **React 19** - Frontend framework
-- **Tailwind CSS 4** - Utility-first CSS framework
-- **Framer Motion** - Animation library
-- **TypeScript** - Type safety and developer experience
-- **Chrome Extension API** - Browser integration
-- **Vite** - Build tool and development server
-
-## 🗂️ Project Structure
+### Project Structure
 
 ```
 src/
-  ├── components/     # React components
-  │   ├── history/    # History-related components
-  │   └── ...
-  ├── popup/          # Chrome extension popup
-  ├── utils/          # Utility functions and helpers
-  ├── assets/         # Static assets
-  └── favicon/        # Extension icons
+├── components/         # React components
+├── services/          # Business logic and API services
+├── utils/             # Utility functions
+└── popup/             # Extension popup UI
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-<p align="center">
-  Made with ❤️ for AI enthusiasts and developers
-</p>
