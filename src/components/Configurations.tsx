@@ -1,151 +1,103 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { ProviderConfigService } from '../services/ProviderConfigService';
+import { motion, AnimatePresence } from 'framer-motion';
 import { AIProviderType } from '../services/types';
-
-export interface ApiConfig {
-  type: 'openai' | 'claude';
-  key: string;
-  enabled: boolean;
-  options?: {
-    modelVersion?: string;
-  };
-}
+import type { ProviderConfig } from '../services/types';
+import { useStore } from '../store/useStore';
 
 interface ConfigurationsProps {
-  onSave: (configs: ApiConfig[]) => void;
-  initialConfigs?: ApiConfig[];
+  onSave: (configs: ProviderConfig[]) => void;
+  initialConfigs?: ProviderConfig[];
 }
 
 export default function Configurations({ onSave, initialConfigs = [] }: ConfigurationsProps) {
-  const [configs, setConfigs] = useState<ApiConfig[]>(initialConfigs);
-  const [isEditing, setIsEditing] = useState(false);
-  const configService = ProviderConfigService.getInstance();
+  const [configs, setConfigs] = useState<ProviderConfig[]>(initialConfigs);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const { apiConfigs, saveConfigs } = useStore();
 
   useEffect(() => {
     if (initialConfigs.length === 0) {
-      const defaultConfigs: ApiConfig[] = [
-        { type: 'openai', key: '', enabled: true },
-        { type: 'claude', key: '', enabled: true }
-      ];
-      setConfigs(defaultConfigs);
-      onSave(defaultConfigs);
+      if (apiConfigs.length > 0) {
+        setConfigs(apiConfigs);
+      } else {
+        const defaultConfigs: ProviderConfig[] = [
+          { type: AIProviderType.OPENAI, apiKey: '', enabled: true, modelVersion: 'gpt-4-turbo-preview' },
+          { type: AIProviderType.CLAUDE, apiKey: '', enabled: true, modelVersion: 'claude-3-opus-20240229' }
+        ];
+        setConfigs(defaultConfigs);
+      }
     }
-  }, [initialConfigs, onSave]);
+  }, [initialConfigs, apiConfigs]);
 
-  const handleKeyChange = (index: number, key: string) => {
+  const handleConfigChange = async (index: number, field: keyof ProviderConfig, value: string | boolean) => {
     const newConfigs = [...configs];
-    newConfigs[index].key = key;
+    newConfigs[index] = {
+      ...newConfigs[index],
+      [field]: value
+    };
     setConfigs(newConfigs);
-    onSave(newConfigs);
-  };
 
-  const handleToggleEnabled = (index: number) => {
-    const newConfigs = [...configs];
-    newConfigs[index].enabled = !newConfigs[index].enabled;
-    setConfigs(newConfigs);
+    await saveConfigs(newConfigs);
     onSave(newConfigs);
 
-    // Update the provider config service
-    const providerType = newConfigs[index].type === 'openai' ? AIProviderType.OPENAI : AIProviderType.CLAUDE;
-    configService.setProviderConfig(providerType, {
-      enabled: newConfigs[index].enabled,
-      apiKey: newConfigs[index].key,
-      modelVersion: newConfigs[index].options?.modelVersion
-    });
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2000);
   };
 
-  const handleSave = () => {
-    onSave(configs);
-    setIsEditing(false);
-  };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="font-medium text-orange-400">API Configurations</h2>
-        {!isEditing ? (
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-orange-400 px-3 py-1.5 rounded-md transition-colors duration-200"
-            onClick={() => setIsEditing(true)}
+      <AnimatePresence>
+        {showSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed top-4 right-4 bg-green-800 text-white px-4 py-2 rounded-md shadow-lg"
           >
-            Edit
-          </motion.button>
-        ) : (
-          <div className="flex gap-2">
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              className="text-xs bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded-md transition-colors duration-200"
-              onClick={() => setIsEditing(false)}
-            >
-              Cancel
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              className="text-xs bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 py-1.5 rounded-md transition-all duration-300"
-              onClick={handleSave}
-            >
-              Save
-            </motion.button>
-          </div>
+            Saved successfully
+          </motion.div>
         )}
-      </div>
-
-      <div className="space-y-3">
-        {configs.map((config, index) => (
-          <div
-            key={config.type}
-            className="p-4 border border-zinc-800 rounded-md bg-zinc-900/50 backdrop-blur-sm"
-          >
-            <div className="flex justify-between items-center mb-3">
-              <div className="flex items-center space-x-3">
-                <h3 className="text-sm font-medium capitalize text-white">
-                  {config.type === 'openai' ? 'OpenAI' : 'Claude'} API
-                </h3>
-                {config.key && !isEditing && (
-                  <span className="text-xs bg-gradient-to-r from-orange-500/20 to-amber-500/20 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/30">
-                    Configured
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() => handleToggleEnabled(index)}
-                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${config.enabled ? 'bg-gradient-to-r from-orange-500 to-amber-500' : 'bg-zinc-700'
-                  }`}
-                role="switch"
-                aria-checked={config.enabled}
-              >
-                <span
-                  className={`absolute h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out ${config.enabled ? 'translate-x-2' : 'translate-x-[-12px]'
-                    }`}
-                />
-              </button>
-            </div>
-
-            {isEditing ? (
+      </AnimatePresence>
+      {configs.map((config, index) => (
+        <div key={config.type} className="p-4 bg-zinc-800/50 rounded-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-white">
+              {config.type === AIProviderType.OPENAI ? 'OpenAI' : 'Claude'}
+            </h3>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.enabled}
+                onChange={(e) => handleConfigChange(index, 'enabled', e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+            </label>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">API Key</label>
               <input
                 type="password"
-                className="w-full p-3 text-sm border border-zinc-700 rounded-md bg-black text-white focus:ring-1 focus:ring-orange-500 focus:outline-none placeholder-zinc-600"
-                placeholder={`Enter ${config.type === 'openai' ? 'OpenAI' : 'Claude'} API key`}
-                value={config.key}
-                onChange={(e) => handleKeyChange(index, e.target.value)}
+                value={config.apiKey}
+                onChange={(e) => handleConfigChange(index, 'apiKey', e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="Enter your API key"
               />
-            ) : (
-              <div className="text-xs text-zinc-400 font-mono">
-                {config.key ?
-                  `${config.key.substring(0, 3)}${'*'.repeat(10)}${config.key.substring(config.key.length - 3)}` :
-                  'No API key configured'
-                }
-              </div>
-            )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Model Version</label>
+              <input
+                type="text"
+                value={config.modelVersion || ''}
+                onChange={(e) => handleConfigChange(index, 'modelVersion', e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="e.g., gpt-4, claude-3"
+              />
+            </div>
           </div>
-        ))}
-      </div>
-
-      <div className="text-xs text-zinc-500 mt-2 italic">
-        Your API keys are stored locally in your browser and are never sent to our servers.
-      </div>
+        </div>
+      ))}
     </div>
   );
 } 
