@@ -27,6 +27,15 @@
                 "src/content-scripts/gpt-monitor.ts"
             ],
             "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://*.chatgpt.com/*"
+            ],
+            "js": [
+                "src/content-scripts/evaluation-tooltip.ts"
+            ],
+            "run_at": "document_idle"
         }
     ],
     "action": {

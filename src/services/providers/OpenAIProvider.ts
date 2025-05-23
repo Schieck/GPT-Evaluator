@@ -1,6 +1,6 @@
 import { AIProviderType } from '../types';
-import type { 
-  EvaluationInput, 
+import type {
+  EvaluationInput,
   EvaluationResult,
   EvaluationMetrics,
   EvaluationFeedback
@@ -22,6 +22,8 @@ Additionally, provide a prompt request suggestion that would likely yield a bett
 - Be clear and well-structured
 - For prompt suggestions, use prompt engineering techniques to improve the response
 - At the suggestions mention what could be the cause of the hallucination
+- If it's not relevant, or the prompt or response are slightly misleading, and go against facts and only facts we have, reduce the scores to almost zero, specially if not true or sources aren't present.
+- Accuracy should be the heaviest weight for the overall score
 
 Provide your evaluation in the following JSON format:
 {
@@ -70,15 +72,15 @@ export class OpenAIProvider extends BaseProvider {
   async evaluate(input: EvaluationInput): Promise<EvaluationResult> {
     try {
       this.validateInput(input);
-      
+
       const startTime = Date.now();
-      
+
       const prompt = EVALUATION_PROMPT
         .replace('{userPrompt}', input.userPrompt)
         .replace('{aiResponse}', input.aiResponse);
-      
+
       const result = await this.callOpenAI(prompt);
-      
+
       return {
         metrics: result.metrics,
         feedback: result.feedback,
@@ -89,7 +91,7 @@ export class OpenAIProvider extends BaseProvider {
       throw error;
     }
   }
-  
+
   private async callOpenAI(prompt: string): Promise<{
     metrics: EvaluationMetrics;
     feedback: EvaluationFeedback;
@@ -125,7 +127,7 @@ export class OpenAIProvider extends BaseProvider {
 
       const data = await response.json();
       const content = data.choices[0]?.message?.content;
-      
+
       if (!content) {
         throw new Error('No content in OpenAI response');
       }

@@ -4,12 +4,14 @@ A Chrome extension that helps evaluate and analyze AI responses in real-time. Th
 
 ## Features
 
-- **Real-time Evaluation**: Instantly evaluate AI responses against user inputs
-- **Live Chat Scanning**: Monitor and analyze GPT conversations in real-time
-- **History Tracking**: Keep track of past evaluations and their results
+- **Live Scanner**: Monitor and analyze GPT conversations in real-time with automatic evaluation
+- **Legacy Evaluator**: Manual evaluation of AI responses against user inputs with detailed analysis
+- **History Tracking**: Comprehensive history of past evaluations with approval/rejection functionality
 - **Multi-Provider Support**: Works with both OpenAI and Claude AI providers
-- **Modern UI**: Beautiful and intuitive interface with smooth animations
-- **Configurable**: Easy setup with API key management
+- **Modern UI**: Beautiful and intuitive interface with smooth animations and collapsible sections
+- **Configurable**: Easy setup with API key management and provider settings
+- **Error Handling**: Robust error handling and reporting system
+- **Responsive Design**: Works both as a popup and in a separate window mode
 
 ## Installation
 
@@ -32,17 +34,23 @@ A Chrome extension that helps evaluate and analyze AI responses in real-time. Th
 
 ## Usage
 
-1. **Basic Evaluation**:
-   - Enter your prompt in the "User Input" field
-   - Paste the AI response in the "AI Response" field
-   - Get instant evaluation results
-
-2. **Live Scanning**:
-   - Click the play button to start monitoring ChatGPT conversations
+1. **Live Scanner**:
+   - Click the "Live" tab to start monitoring ChatGPT conversations
    - View real-time evaluation metrics and scores
    - Track conversation quality over time
 
-3. **Configuration**:
+2. **Legacy Evaluator**:
+   - Enter your prompt in the "User Input" field
+   - Paste the AI response in the "AI Response" field
+   - Get instant evaluation results
+   - Collapsible input fields for better space management
+
+3. **History**:
+   - View all past evaluations
+   - Approve or reject evaluations
+   - Track conversation timestamps and results
+
+4. **Configuration**:
    - Add your API keys for OpenAI and/or Claude
    - Customize evaluation settings
    - Manage your preferences

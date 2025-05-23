@@ -4,28 +4,49 @@ import { PlayIcon, StopIcon } from '@heroicons/react/24/solid';
 import { useStore } from '../store/useStore';
 import { useErrorHandler } from '../hooks/useErrorHandler';
 import { ErrorCategory, ErrorSeverity } from '../services/ErrorHandlingService';
-import { EvaluationService } from '../services/EvaluationService';
-import type { EvaluationResult } from '../services/types';
-import { AIProviderType } from '../services/types';
+import { DynamicEvaluationService } from '../services/DynamicEvaluationService';
+import { EvaluationHistoryService } from '../services/EvaluationHistoryService';
+import { MetricsDisplay } from './evaluation/MetricsDisplay';
+import { ProviderSummary } from './evaluation/ProviderSummary';
+import { ConversationApproval } from './evaluation/ConversationApproval';
+import { useFeedback } from '../hooks/useFeedback';
+import { useHistoryStore } from '../store/useHistoryStore';
+import type { EvaluationResult, CombinedEvaluationResult } from '../services/types';
+import { AIProviderType, EvaluationStatus } from '../services/types';
+import type { FoundConversation } from '../store/useStore';
 
 interface MessageResponse {
     success: boolean;
     error?: string;
 }
 
-interface Conversation {
-    userPrompt: string;
-    aiResponse: string;
-    timestamp: string;
-}
-
 type ScanStatus = 'idle' | 'scanning' | 'error';
 
 export default function LiveScanner() {
-    const { isScanning, setIsScanning } = useStore();
+    const {
+        isScanning,
+        setIsScanning,
+        foundConversations,
+        addFoundConversation,
+        updateConversationStatus,
+        clearFoundConversations
+    } = useStore();
+
+    const historyService = EvaluationHistoryService.getInstance();
+
     const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
     const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
-    const [currentEvaluation, setCurrentEvaluation] = useState<EvaluationResult | null>(null);
+    const [evaluationResult, setEvaluationResult] = useState<Record<AIProviderType, EvaluationResult> | null>(null);
+    const [combinedResult, setCombinedResult] = useState<CombinedEvaluationResult | null>(null);
+    const [isEvaluating, setIsEvaluating] = useState(false);
+
+    const {
+        userFeedback,
+        isEditingFeedback,
+        handleFeedbackSubmit,
+        handleFeedbackEdit,
+        handleFeedbackChange
+    } = useFeedback();
 
     const { handleError } = useErrorHandler({
         context: 'LiveScanner',
@@ -57,29 +78,78 @@ export default function LiveScanner() {
 
             if (!isScanning) {
                 setLastScanTime(new Date());
+                clearFoundConversations();
             }
         } catch (error) {
             handleError(error, 'toggleScanning');
         }
     };
 
-    const evaluateConversation = async (conversation: Conversation) => {
+    const evaluateConversation = async (conversation: FoundConversation) => {
         try {
-            const evaluationService = EvaluationService.getInstance();
-            const result = await evaluationService.evaluateSync(conversation, AIProviderType.OPENAI);
-            setCurrentEvaluation(result);
+            setIsEvaluating(true);
+            const evaluationService = DynamicEvaluationService.getInstance();
+            const result = await evaluationService.evaluateWithAllProviders({
+                userPrompt: conversation.userPrompt,
+                aiResponse: conversation.aiResponse
+            });
+
+            setEvaluationResult(result.providerResults);
+            setCombinedResult(result);
             setLastScanTime(new Date());
+
+            // Add to history using the history service
+            historyService.addToHistory(
+                conversation.userPrompt,
+                conversation.aiResponse,
+                {
+                    status: EvaluationStatus.COMPLETED,
+                    id: crypto.randomUUID(),
+                    result: result.providerResults,
+                    combinedMetrics: result.metrics,
+                    combinedFeedback: result.feedback
+                }
+            );
         } catch (error) {
             handleError(error, 'evaluateConversation');
             setScanStatus('error');
             setIsScanning(false);
+        } finally {
+            setIsEvaluating(false);
         }
+    };
+
+    const handleConversationApproval = (conversation: FoundConversation) => {
+        updateConversationStatus(conversation.id, 'approved');
+        evaluateConversation(conversation);
+    };
+
+    const handleConversationRejection = (conversation: FoundConversation) => {
+        updateConversationStatus(conversation.id, 'rejected');
+    };
+
+    const handleFeedbackSubmitWithSave = (provider: AIProviderType) => {
+        const feedback = userFeedback[provider];
+        if (combinedResult) {
+            const historyEntry = historyService.findDuplicate(
+                foundConversations[0]?.userPrompt || '',
+                foundConversations[0]?.aiResponse || ''
+            ).duplicateEntry;
+
+            if (historyEntry) {
+                // Update feedback in the store
+                const { updateFeedback } = useHistoryStore.getState();
+                updateFeedback(historyEntry.id, provider, feedback);
+            }
+        }
+        handleFeedbackSubmit(provider);
     };
 
     useEffect(() => {
         const messageListener = (message: any) => {
+            console.log('message', message);
             if (message.type === 'CONVERSATION_READY') {
-                evaluateConversation(message.data.conversation);
+                addFoundConversation(message.data.conversation);
             } else if (message.type === 'SCAN_ERROR') {
                 setScanStatus('error');
                 setIsScanning(false);
@@ -90,6 +160,11 @@ export default function LiveScanner() {
         chrome.runtime.onMessage.addListener(messageListener);
         return () => chrome.runtime.onMessage.removeListener(messageListener);
     }, []);
+
+    // Sort conversations by timestamp in descending order (newest first)
+    const sortedConversations = [...foundConversations].sort((a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
 
     return (
         <div className="space-y-6">
@@ -153,21 +228,67 @@ export default function LiveScanner() {
                 </AnimatePresence>
             </div>
 
-            {currentEvaluation && (
-                <div className="p-4 rounded-lg bg-zinc-900/50 backdrop-blur-sm border border-zinc-800">
-                    <h3 className="text-sm font-medium text-zinc-400 mb-2">Latest Evaluation</h3>
-                    <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                            {Object.entries(currentEvaluation.metrics).map(([key, value]) => (
-                                <div key={key} className="flex items-center justify-between">
-                                    <span className="text-sm text-zinc-400">{key}</span>
-                                    <span className="text-sm text-white">{String(value)}</span>
-                                </div>
+            <AnimatePresence mode="wait">
+                {isEvaluating && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="p-4 bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-lg"
+                    >
+                        <div className="flex items-center justify-center space-x-2">
+                            <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-sm text-zinc-400">Evaluating conversation...</span>
+                        </div>
+                    </motion.div>
+                )}
+
+                {foundConversations.length > 0 && (
+                    <div className="space-y-3">
+                        {sortedConversations
+                            .filter(conv => conv.status === 'pending')
+                            .map(conversation => (
+                                <ConversationApproval
+                                    key={conversation.id}
+                                    conversation={conversation}
+                                    onApprove={() => handleConversationApproval(conversation)}
+                                    onReject={() => handleConversationRejection(conversation)}
+                                />
+                            ))}
+                    </div>
+                )}
+
+                {evaluationResult && combinedResult && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3 }}
+                        className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/50 backdrop-blur-sm"
+                    >
+                        <div className="space-y-4">
+                            <MetricsDisplay
+                                metrics={combinedResult.metrics}
+                                feedback={combinedResult.feedback}
+                            />
+
+                            {Object.entries(evaluationResult).map(([provider, result]) => (
+                                <ProviderSummary
+                                    key={provider}
+                                    provider={provider as AIProviderType}
+                                    feedback={result.feedback}
+                                    metrics={result.metrics}
+                                    userFeedback={userFeedback[provider as AIProviderType]}
+                                    isEditingFeedback={isEditingFeedback[provider as AIProviderType]}
+                                    onFeedbackEdit={handleFeedbackEdit}
+                                    onFeedbackSubmit={handleFeedbackSubmitWithSave}
+                                    onFeedbackChange={handleFeedbackChange}
+                                />
                             ))}
                         </div>
-                    </div>
-                </div>
-            )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 } 

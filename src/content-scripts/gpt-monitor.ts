@@ -3,7 +3,7 @@
 console.log('[GPT Evaluator Monitor] Content script starting initialization');
 
 if (window.location.hostname !== 'chatgpt.com') {
-  console.debug('[GPT Monitor] Not on ChatGPT, skipping initialization');
+  console.debug('[GPT Evaluator Monitor] Not on ChatGPT, skipping initialization');
   throw new Error('Not on ChatGPT');
 }
 
@@ -34,9 +34,9 @@ let lastProcessedAssistantMessage: string = '';
 
 const logDebug = (message: string, data?: any) => {
   if (data) {
-    console.debug(`[GPT Monitor] ${message}`, data);
+    console.debug(`[GPT Evaluator Monitor] ${message}`, data);
   } else {
-    console.debug(`[GPT Monitor] ${message}`);
+    console.debug(`[GPT Evaluator Monitor] ${message}`);
   }
 };
 
@@ -59,7 +59,7 @@ const sendMessageToBackground = (message: any): Promise<MessageResponse> => {
 // Why: Complex message extraction logic that handles both user and assistant messages, including streaming state
 const getLatestMessage = (): ChatMessage | null => {
   const messages = document.querySelectorAll('[data-message-author-role]');
-  
+
   if (!messages.length) {
     return null;
   }
@@ -67,7 +67,7 @@ const getLatestMessage = (): ChatMessage | null => {
   const lastMessage = messages[messages.length - 1];
   const role = lastMessage.getAttribute('data-message-author-role') as 'user' | 'assistant' | null;
   const messageId = lastMessage.getAttribute('data-message-id');
-  
+
   if (!role || !messageId) {
     return null;
   }
@@ -79,10 +79,10 @@ const getLatestMessage = (): ChatMessage | null => {
       assistantMessage: lastProcessedAssistantMessage
     };
   }
-  
+
   let content = '';
   let userMessage = '';
-  
+
   if (role === 'user') {
     const contentElement = lastMessage.querySelector('.whitespace-pre-wrap');
     content = contentElement?.textContent || '';
@@ -90,11 +90,11 @@ const getLatestMessage = (): ChatMessage | null => {
     if (lastMessage.querySelector('.streaming-animation') !== null) {
       return null;
     }
-    
+
     const contentElement = lastMessage.querySelector('.markdown');
     content = contentElement?.textContent || '';
 
-    const userMessages = Array.from(messages).filter(msg => 
+    const userMessages = Array.from(messages).filter(msg =>
       msg.getAttribute('data-message-author-role') === 'user'
     );
     if (userMessages.length > 0) {
@@ -113,7 +113,7 @@ const getLatestMessage = (): ChatMessage | null => {
     lastProcessedAssistantMessage = content;
   }
 
-  return { 
+  return {
     type: 'new',
     role,
     content,
@@ -122,12 +122,26 @@ const getLatestMessage = (): ChatMessage | null => {
   };
 };
 
+const handleProcessedMessage = async (userMessage: string, assistantMessage: string) => {
+  try {
+    const response = await sendMessageToBackground({
+      type: 'NEW_MESSAGE',
+      data: {
+        userMessage,
+        assistantMessage
+      }
+    });
+  } catch (error) {
+    console.error('[GPT Evaluator Monitor] Failed to handle processed message:', error);
+  }
+};
+
 // Why: Retry logic for finding chat container with fallback mechanism
 const startMonitoring = () => {
   if (isMonitoring) {
     return;
   }
-  
+
   isMonitoring = true;
   const maxAttempts = 5;
   let attempts = 0;
@@ -137,14 +151,14 @@ const startMonitoring = () => {
     const conversationTurns = document.querySelectorAll('[data-testid^="conversation-turn-"]');
     const latestTurn = conversationTurns[conversationTurns.length - 1];
     const chatContainer = latestTurn?.parentElement;
-    
+
     if (!chatContainer) {
       if (attempts < maxAttempts) {
         setTimeout(tryFindContainer, 2000);
         return;
       }
-      
-      console.warn('[GPT Monitor] Chat container not found after all attempts');
+
+      console.warn('[GPT Evaluator Monitor] Chat container not found after all attempts');
       const fallbackContainer = document.querySelector('[data-testid^="conversation-turn-"]')?.parentElement;
       if (fallbackContainer) {
         startObserving(fallbackContainer);
@@ -166,15 +180,9 @@ const startObserving = (container: Element) => {
     if (!message) return;
 
     if (message.type === 'processed') {
-      sendMessageToBackground({
-        type: 'NEW_MESSAGE',
-        data: {
-          userMessage: message.userMessage,
-          assistantMessage: message.assistantMessage
-        }
-      }).catch(error => {
-        console.error('[GPT Monitor] Failed to send processed message:', error);
-      });
+      if (message.userMessage && message.assistantMessage) {
+        handleProcessedMessage(message.userMessage, message.assistantMessage);
+      }
       return;
     }
 
@@ -184,17 +192,19 @@ const startObserving = (container: Element) => {
 
     lastMessageId = message.messageId || null;
 
-    sendMessageToBackground({
-      type: 'NEW_MESSAGE',
-      data: {
-        role: message.role,
-        content: message.content,
-        userMessage: message.userMessage,
-        timestamp: new Date().toISOString()
-      }
-    }).catch(error => {
-      console.error('[GPT Monitor] Failed to send new message:', error);
-    });
+    if (message.content && message.role) {
+      sendMessageToBackground({
+        type: 'NEW_MESSAGE',
+        data: {
+          role: message.role,
+          content: message.content,
+          userMessage: message.userMessage,
+          timestamp: new Date().toISOString()
+        }
+      }).catch(error => {
+        console.error('[GPT Evaluator Monitor] Failed to send new message:', error);
+      });
+    }
   });
 
   observer.observe(container, {
@@ -212,7 +222,7 @@ const stopMonitoring = () => {
 const initialize = () => {
   sendMessageToBackground({ type: 'CONTENT_SCRIPT_READY' })
     .catch(error => {
-      console.error('[GPT Monitor] Failed to send ready notification:', error);
+      console.error('[GPT Evaluator Monitor] Failed to send ready notification:', error);
     });
 };
 
@@ -226,7 +236,7 @@ chrome.runtime.onMessage.addListener((message: Message, _, sendResponse) => {
       sendResponse({ success: true });
     }
   } catch (error: any) {
-    console.error('[GPT Monitor] Error handling message:', error);
+    console.error('[GPT Evaluator Monitor] Error handling message:', error);
     sendResponse({ success: false, error: error.message });
   }
   return true;

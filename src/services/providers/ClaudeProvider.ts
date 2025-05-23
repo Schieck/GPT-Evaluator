@@ -1,6 +1,6 @@
 import { AIProviderType } from '../types';
-import type { 
-  EvaluationInput, 
+import type {
+  EvaluationInput,
   EvaluationResult,
   EvaluationMetrics,
   EvaluationFeedback
@@ -24,6 +24,8 @@ Additionally, provide a prompt request suggestion that would likely yield a bett
 - Be clear and well-structured
 - For prompt suggestions, use prompt engineering techniques to improve the response
 - At the suggestions mention what could be the cause of the hallucination
+- If it's not relevant, or the prompt or response are slightly misleading, and go against facts and only facts we have, reduce the scores to almost zero, specially if not true or sources aren't present.
+- Accuracy should be the heaviest weight for the overall score
 
 Provide numerical scores and detailed analysis of strengths, weaknesses, and specific improvement suggestions.
 `;
@@ -72,16 +74,16 @@ export class ClaudeProvider extends BaseProvider {
 
   async evaluate(input: EvaluationInput): Promise<EvaluationResult> {
     this.validateInput(input);
-    
+
     const startTime = Date.now();
-    
+
     try {
       const prompt = EVALUATION_PROMPT
         .replace('{userPrompt}', input.userPrompt)
         .replace('{aiResponse}', input.aiResponse);
-      
+
       const result = await this.callClaude(prompt);
-      
+
       return {
         metrics: result.metrics,
         feedback: result.feedback,
@@ -89,11 +91,11 @@ export class ClaudeProvider extends BaseProvider {
       };
     } catch (error) {
       console.error('Claude evaluation failed:', error);
-      
+
       throw new Error(`Claude evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-  
+
   private async callClaude(prompt: string): Promise<{
     metrics: EvaluationMetrics;
     feedback: EvaluationFeedback;
@@ -128,7 +130,7 @@ export class ClaudeProvider extends BaseProvider {
             reject(new Error(`Failed to send message to background script: ${chrome.runtime.lastError.message}`));
             return;
           }
-          
+
           if (!response) {
             reject(new Error('No response received from background script'));
             return;
@@ -149,7 +151,7 @@ export class ClaudeProvider extends BaseProvider {
       });
 
       const content = response.content?.[0]?.text;
-      
+
       if (!content) {
         throw new Error('No content in Claude response');
       }
@@ -159,7 +161,7 @@ export class ClaudeProvider extends BaseProvider {
         if (!jsonMatch) {
           throw new Error('Failed to find JSON in Claude response');
         }
-        
+
         const parsedResponse = JSON.parse(jsonMatch[0]);
         return {
           metrics: parsedResponse.metrics,

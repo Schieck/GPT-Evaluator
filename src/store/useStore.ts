@@ -12,16 +12,28 @@ const DEFAULT_CONFIGS: ProviderConfig[] = [
 
 type ActiveTab = 'live' | 'evaluator' | 'history' | 'config';
 
+export interface FoundConversation {
+  id: string;
+  userPrompt: string;
+  aiResponse: string;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 interface EvaluationState {
   userInput: string;
   aiResponse: string;
   isScanning: boolean;
   apiConfigs: ProviderConfig[];
   activeTab: ActiveTab;
+  foundConversations: FoundConversation[];
   setUserInput: (input: string) => void;
   setAiResponse: (response: string) => void;
   setIsScanning: (isScanning: boolean) => void;
   setActiveTab: (tab: ActiveTab) => void;
+  addFoundConversation: (conversation: Omit<FoundConversation, 'id' | 'status'>) => void;
+  updateConversationStatus: (id: string, status: 'approved' | 'rejected') => void;
+  clearFoundConversations: () => void;
   initializeProviders: () => Promise<void>;
   saveConfigs: (configs: ProviderConfig[]) => Promise<void>;
   getApiKey: (type: 'openai' | 'claude') => string;
@@ -36,11 +48,45 @@ export const useStore = create<EvaluationState>()(
         isScanning: false,
         apiConfigs: DEFAULT_CONFIGS,
         activeTab: 'live',
+        foundConversations: [],
 
         setUserInput: (input: string) => set({ userInput: input }),
         setAiResponse: (response: string) => set({ aiResponse: response }),
         setIsScanning: (isScanning: boolean) => set({ isScanning }),
         setActiveTab: (tab: ActiveTab) => set({ activeTab: tab }),
+
+        addFoundConversation: (conversation) => {
+          const { foundConversations } = get();
+          // Check for duplicates
+          const isDuplicate = foundConversations.some(
+            fc => fc.userPrompt === conversation.userPrompt &&
+              fc.aiResponse === conversation.aiResponse
+          );
+
+          if (!isDuplicate) {
+            set({
+              foundConversations: [
+                ...foundConversations,
+                {
+                  ...conversation,
+                  id: crypto.randomUUID(),
+                  status: 'pending'
+                }
+              ]
+            });
+          }
+        },
+
+        updateConversationStatus: (id, status) => {
+          const { foundConversations } = get();
+          set({
+            foundConversations: foundConversations.map(conv =>
+              conv.id === id ? { ...conv, status } : conv
+            )
+          });
+        },
+
+        clearFoundConversations: () => set({ foundConversations: [] }),
 
         getApiKey: (type: 'openai' | 'claude') => {
           const configs = get().apiConfigs;
@@ -52,7 +98,7 @@ export const useStore = create<EvaluationState>()(
           const errorHandler = ErrorHandlingService.getInstance();
           try {
             const configs = get().apiConfigs;
-            
+
             const openAiConfig = configs.find(c => c.type === AIProviderType.OPENAI);
             if (openAiConfig?.apiKey) {
               providerFactory.initializeProvider(AIProviderType.OPENAI, openAiConfig.apiKey, openAiConfig.modelVersion);
@@ -97,7 +143,9 @@ export const useStore = create<EvaluationState>()(
         partialize: (state) => ({
           userInput: state.userInput,
           aiResponse: state.aiResponse,
-          apiConfigs: state.apiConfigs
+          apiConfigs: state.apiConfigs,
+          foundConversations: state.foundConversations,
+          isScanning: state.isScanning
         })
       }
     )
