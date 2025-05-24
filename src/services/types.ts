@@ -21,12 +21,21 @@ export interface EvaluationMetrics {
   overall: number;         // 0-100: Weighted average of all metrics
 }
 
+export interface EvaluationReference {
+  title: string;
+  url?: string;
+  description: string;
+  category: 'fact-check' | 'source' | 'contradiction' | 'supporting-evidence' | 'methodology';
+  relevanceToScore: 'relevance' | 'accuracy' | 'completeness' | 'coherence';
+}
+
 export interface EvaluationFeedback {
   strengths: string[];
   weaknesses: string[];
   suggestions: string[];
   summary: string;
   promptRequestSuggestion: string;
+  references: EvaluationReference[];
 }
 
 /**

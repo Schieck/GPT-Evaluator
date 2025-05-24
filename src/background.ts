@@ -4,6 +4,7 @@ interface Conversation {
   userPrompt: string;
   aiResponse: string;
   timestamp: string;
+  location?: { x: number; y: number };
 }
 
 interface MessageResponse {
@@ -20,7 +21,6 @@ interface ApiRequest {
 }
 
 let isScanning = false;
-let contentScriptReady = false;
 let currentConversation: Conversation | null = null;
 
 console.log('[Background] Background script loaded');
@@ -91,19 +91,31 @@ const handleNewMessage = (request: any, sendResponse: (response: MessageResponse
     return;
   }
 
-  const { assistantMessage, userMessage, timestamp } = request.data;
+  const { assistantMessage, userMessage, timestamp, location } = request.data;
 
   currentConversation = {
     userPrompt: userMessage,
     aiResponse: assistantMessage,
-    timestamp: timestamp || new Date().toISOString()
+    timestamp: timestamp || new Date().toISOString(),
+    location: location
   };
 
   if (currentConversation.userPrompt?.length > 0 && currentConversation.aiResponse?.length > 0) {
     chrome.runtime.sendMessage({
       type: 'CONVERSATION_READY',
       data: {
-        conversation: currentConversation
+        conversation: currentConversation,
+        location
+      }
+    }).then(() => {
+      if (location) {
+        sendMessageToContentScript({
+          type: 'SHOW_EVALUATION_TOOLTIP',
+          data: {
+            position: location,
+            status: 'pending'
+          }
+        });
       }
     }).catch(error => {
       console.error('[Background] Failed to forward conversation to popup:', error);
@@ -116,12 +128,27 @@ const handleNewMessage = (request: any, sendResponse: (response: MessageResponse
 chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
   switch (request.type) {
     case 'CONTENT_SCRIPT_READY':
-      contentScriptReady = true;
       sendResponse({ success: true });
       break;
 
     case 'API_CALL':
       handleApiCall(request, sendResponse);
+      break;
+
+    case 'GET_SCANNING_STATUS':
+      sendResponse({ success: true, isScanning });
+      break;
+
+    case 'UPDATE_TOOLTIP_POSITION':
+      if (request.data?.location) {
+        sendMessageToContentScript({
+          type: 'UPDATE_TOOLTIP_POSITION',
+          data: { location: request.data.location }
+        }).then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+      } else {
+        sendResponse({ success: false, error: 'No location provided' });
+      }
       break;
 
     case 'START_SCANNING':
@@ -143,6 +170,61 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
 
     case 'NEW_MESSAGE':
       handleNewMessage(request, sendResponse);
+      break;
+
+    case 'APPROVE_EVALUATION':
+      if (currentConversation) {
+        // Update tooltip to show evaluating state
+        sendMessageToContentScript({
+          type: 'UPDATE_EVALUATION_TOOLTIP',
+          data: {
+            position: currentConversation.location || { x: 0, y: 0 },
+            status: 'evaluating'
+          }
+        });
+
+        // Forward the conversation to the popup for evaluation
+        chrome.runtime.sendMessage({
+          type: 'CONVERSATION_APPROVED',
+          data: {
+            conversation: currentConversation
+          }
+        }).then(() => {
+          sendResponse({ success: true });
+        }).catch(error => {
+          console.error('[Background] Failed to forward approved conversation:', error);
+          sendResponse({ success: false, error: error.message });
+        });
+      } else {
+        sendResponse({ success: false, error: 'No conversation to approve' });
+      }
+      break;
+
+    case 'REJECT_EVALUATION':
+      currentConversation = null;
+      // Hide the tooltip
+      sendMessageToContentScript({
+        type: 'HIDE_EVALUATION_TOOLTIP'
+      }).then(() => sendResponse({ success: true }))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      break;
+
+    case 'EVALUATION_COMPLETE':
+      if (request.data?.metrics) {
+        // Update tooltip with evaluation results
+        sendMessageToContentScript({
+          type: 'UPDATE_EVALUATION_TOOLTIP',
+          data: {
+            position: request.data.location || { x: 0, y: 0 },
+            status: 'evaluated',
+            metrics: request.data.metrics
+          }
+        }).then(() => {
+          sendResponse({ success: true });
+        }).catch(error => sendResponse({ success: false, error: error.message }));
+      } else {
+        sendResponse({ success: false, error: 'No metrics provided' });
+      }
       break;
   }
 

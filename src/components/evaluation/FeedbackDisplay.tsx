@@ -1,12 +1,18 @@
-import type { EvaluationFeedback } from '../../services/types';
+import type { EvaluationFeedback, EvaluationReference } from '../../services/types';
+import { ReferencesDisplay } from './ReferencesDisplay';
 
 interface FeedbackDisplayProps {
     feedback: EvaluationFeedback;
+    references: EvaluationReference[];
     className?: string;
 }
 
-export const FeedbackDisplay = ({ feedback, className = '' }: FeedbackDisplayProps) => (
+export const FeedbackDisplay = ({ feedback, references, className = '' }: FeedbackDisplayProps) => (
     <div className={`space-y-3 ${className}`}>
+        <ReferencesDisplay
+            references={references}
+            className="mt-4"
+        />
         <div className="p-3 bg-zinc-800/50 rounded-md">
             <h3 className="text-xs font-medium text-orange-400 mb-2">Summary</h3>
             <p className="text-sm text-white">{feedback.summary}</p>

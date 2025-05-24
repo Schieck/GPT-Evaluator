@@ -18,6 +18,7 @@ import { Header } from '../components/Header';
 import { TabGroup } from '../components/TabGroup';
 import HistoryComponent from '../components/history/HistoryComponent';
 import LiveScanner from '../components/LiveScanner';
+import './App.css';
 
 const tabs = [
   { id: 'live', label: 'Live', icon: <BoltIcon className="w-4 h-4" /> },
@@ -177,7 +178,7 @@ export default function App() {
         console.error('App error boundary caught:', error);
       }}
     >
-      <div className="w-[360px] max-h-[600px] overflow-auto bg-black text-white popup-container">
+      <div className="w-full h-full overflow-auto bg-black text-white popup-container">
         <div className="h-[3px] bg-gradient-to-r from-orange-500 via-orange-400 to-amber-500"></div>
 
         <Header

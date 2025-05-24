@@ -14,7 +14,22 @@ export const mockEvaluationResult = {
     weaknesses: ['Brief'],
     suggestions: ['Add more details'],
     summary: 'Good response but could be more detailed',
-    promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations'
+    promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations',
+    references: [
+      {
+        title: 'Official Documentation Source',
+        url: 'https://example.com/docs',
+        description: 'Verified technical accuracy against official documentation',
+        category: 'source' as const,
+        relevanceToScore: 'accuracy' as const
+      },
+      {
+        title: 'Completeness Assessment',
+        description: 'Response covers all key aspects mentioned in the prompt',
+        category: 'methodology' as const,
+        relevanceToScore: 'completeness' as const
+      }
+    ]
   },
   metadata: {
     providerId: AIProviderType.OPENAI,

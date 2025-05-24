@@ -14,6 +14,7 @@ interface ChatMessage {
   messageId?: string;
   userMessage?: string;
   assistantMessage?: string;
+  location?: { x: number; y: number };
 }
 
 interface ControlMessage {
@@ -31,6 +32,8 @@ let isMonitoring = false;
 let lastMessageId: string | null = null;
 let lastProcessedUserMessage: string = '';
 let lastProcessedAssistantMessage: string = '';
+let currentConversationElement: Element | null = null;
+let scrollUpdateInterval: number | null = null;
 
 const logDebug = (message: string, data?: any) => {
   if (data) {
@@ -113,24 +116,45 @@ const getLatestMessage = (): ChatMessage | null => {
     lastProcessedAssistantMessage = content;
   }
 
+  const rect = lastMessage.getBoundingClientRect();
+  const location = {
+    x: rect.left + rect.width / 2,
+    y: rect.top
+  };
+
   return {
     type: 'new',
     role,
     content,
     messageId,
-    userMessage: userMessage || undefined
+    userMessage: userMessage || undefined,
+    location
   };
 };
 
 const handleProcessedMessage = async (userMessage: string, assistantMessage: string) => {
   try {
-    const response = await sendMessageToBackground({
+    const messages = document.querySelectorAll('[data-message-author-role]');
+    const lastMessage = messages[messages.length - 1];
+    currentConversationElement = lastMessage;
+
+    const rect = lastMessage.getBoundingClientRect();
+    const location = {
+      x: rect.left + rect.width / 2,
+      y: rect.top
+    };
+
+    await sendMessageToBackground({
       type: 'NEW_MESSAGE',
       data: {
         userMessage,
-        assistantMessage
+        assistantMessage,
+        location
       }
     });
+
+    // Start tracking scroll position for tooltip updates
+    startScrollTracking();
   } catch (error) {
     console.error('[GPT Evaluator Monitor] Failed to handle processed message:', error);
   }
@@ -199,7 +223,8 @@ const startObserving = (container: Element) => {
           role: message.role,
           content: message.content,
           userMessage: message.userMessage,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          location: message.location
         }
       }).catch(error => {
         console.error('[GPT Evaluator Monitor] Failed to send new message:', error);
@@ -217,6 +242,8 @@ const startObserving = (container: Element) => {
 const stopMonitoring = () => {
   isMonitoring = false;
   lastMessageId = null;
+  currentConversationElement = null;
+  stopScrollTracking();
 };
 
 const initialize = () => {
@@ -224,6 +251,44 @@ const initialize = () => {
     .catch(error => {
       console.error('[GPT Evaluator Monitor] Failed to send ready notification:', error);
     });
+};
+
+const updateTooltipPosition = () => {
+  if (!currentConversationElement || !isMonitoring) return;
+
+  const rect = (currentConversationElement as HTMLElement).getBoundingClientRect();
+  const location = {
+    x: rect.left + rect.width / 2,
+    y: rect.top
+  };
+
+  // Only update if the element is visible
+  if (rect.top > -rect.height && rect.top < window.innerHeight) {
+    sendMessageToBackground({
+      type: 'UPDATE_TOOLTIP_POSITION',
+      data: { location }
+    }).catch(error => {
+      console.error('[GPT Evaluator Monitor] Failed to update tooltip position:', error);
+    });
+  }
+};
+
+const startScrollTracking = () => {
+  if (scrollUpdateInterval) return;
+
+  // Update position on scroll
+  window.addEventListener('scroll', updateTooltipPosition, { passive: true });
+
+  // Also update periodically in case of dynamic content changes
+  scrollUpdateInterval = window.setInterval(updateTooltipPosition, 500);
+};
+
+const stopScrollTracking = () => {
+  window.removeEventListener('scroll', updateTooltipPosition);
+  if (scrollUpdateInterval) {
+    clearInterval(scrollUpdateInterval);
+    scrollUpdateInterval = null;
+  }
 };
 
 chrome.runtime.onMessage.addListener((message: Message, _, sendResponse) => {

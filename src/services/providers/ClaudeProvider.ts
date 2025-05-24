@@ -26,6 +26,12 @@ Additionally, provide a prompt request suggestion that would likely yield a bett
 - At the suggestions mention what could be the cause of the hallucination
 - If it's not relevant, or the prompt or response are slightly misleading, and go against facts and only facts we have, reduce the scores to almost zero, specially if not true or sources aren't present.
 - Accuracy should be the heaviest weight for the overall score
+- You must provide specific references that support your evaluation decisions. Include:
+  - Fact-checking sources for accuracy claims
+  - Methodological explanations for scoring criteria
+  - Documentation of contradictions or supporting evidence
+  - Real URLs to authoritative sources when available
+  - Specific citations for any factual claims or errors identified
 
 Provide numerical scores and detailed analysis of strengths, weaknesses, and specific improvement suggestions.
 `;
@@ -54,7 +60,17 @@ Provide your evaluation in valid JSON format with this exact structure:
     "weaknesses": ["weakness1", "weakness2", ...],
     "suggestions": ["suggestion1", "suggestion2", ...],
     "summary": "<concise summary of assessment>",
-    "promptRequestSuggestion": "<suggested prompt that would likely yield a better response>"
+    "promptRequestSuggestion": "<suggested prompt that would likely yield a better response>",
+    "references": [
+      {
+        "title": "<reference title>",
+        "url": "<URL if available, (if available, only working links), otherwise omit this field>",
+        "description": "<how this reference supports the evaluation>",
+        "category": "<fact-check|source|contradiction|supporting-evidence|methodology>",
+        "relevanceToScore": "<relevance|accuracy|completeness|coherence>"
+      },
+      ...
+    ]
   }
 }
 Ensure your output is valid JSON that can be parsed programmatically.

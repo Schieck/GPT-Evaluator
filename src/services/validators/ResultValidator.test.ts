@@ -16,7 +16,16 @@ describe('ResultValidator', () => {
     weaknesses: ['Could be more detailed'],
     suggestions: ['Add examples'],
     summary: 'Overall good response',
-    promptRequestSuggestion: 'Consider adding more specific examples in your response'
+    promptRequestSuggestion: 'Consider adding more specific examples in your response',
+    references: [
+      {
+        title: 'Test Reference',
+        url: 'https://example.com',
+        description: 'This is a test reference',
+        category: 'source',
+        relevanceToScore: 'accuracy'
+      }
+    ]
   };
 
   const validResult: EvaluationResult = {
@@ -125,6 +134,58 @@ describe('ResultValidator', () => {
       const invalidFeedback = { ...validFeedback, promptRequestSuggestion: 123 as unknown as string };
       expect(() => ResultValidator.validateFeedback(invalidFeedback))
         .toThrow('Feedback promptRequestSuggestion is required and must be a string');
+    });
+
+    test('throws error for non-array references', () => {
+      const invalidFeedback = { ...validFeedback, references: 'not an array' as unknown as any[] };
+      expect(() => ResultValidator.validateFeedback(invalidFeedback))
+        .toThrow('Feedback references must be an array');
+    });
+
+    test('throws error for reference without title', () => {
+      const invalidFeedback = {
+        ...validFeedback,
+        references: [{
+          description: 'test',
+          category: 'source',
+          relevanceToScore: 'accuracy'
+        } as any]
+      };
+      expect(() => ResultValidator.validateFeedback(invalidFeedback))
+        .toThrow('Reference 0 must have a valid title');
+    });
+
+    test('throws error for reference with invalid category', () => {
+      const invalidFeedback = {
+        ...validFeedback,
+        references: [{
+          title: 'Test',
+          description: 'test',
+          category: 'invalid-category',
+          relevanceToScore: 'accuracy'
+        } as any]
+      };
+      expect(() => ResultValidator.validateFeedback(invalidFeedback))
+        .toThrow('Reference 0 must have a valid category');
+    });
+
+    test('throws error for reference with invalid relevanceToScore', () => {
+      const invalidFeedback = {
+        ...validFeedback,
+        references: [{
+          title: 'Test',
+          description: 'test',
+          category: 'source',
+          relevanceToScore: 'invalid-score'
+        } as any]
+      };
+      expect(() => ResultValidator.validateFeedback(invalidFeedback))
+        .toThrow('Reference 0 must have a valid relevanceToScore');
+    });
+
+    test('accepts empty references array', () => {
+      const feedbackWithEmptyReferences = { ...validFeedback, references: [] };
+      expect(() => ResultValidator.validateFeedback(feedbackWithEmptyReferences)).not.toThrow();
     });
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { 
+import {
   AIProviderType,
   type EvaluationInput,
   type EvaluationResult
@@ -19,7 +19,8 @@ const mockEvaluationResult: EvaluationResult = {
     weaknesses: ['Brief'],
     suggestions: ['Add more details'],
     summary: 'Good response but could be more detailed',
-    promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations'
+    promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations',
+    references: []
   },
   metadata: {
     providerId: AIProviderType.OPENAI,

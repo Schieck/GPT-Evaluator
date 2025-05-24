@@ -107,9 +107,10 @@ export function useEvaluation({ userInput, aiResponse, onResultsChange }: UseEva
           weaknesses: [],
           suggestions: [],
           summary: 'Combined evaluation from cached results',
-          promptRequestSuggestion: ''
+          promptRequestSuggestion: '',
+          references: []
         };
-        
+
         setCombinedResult({
           providerResults: duplicateEntry.evaluation.result,
           metrics: combinedMetrics,

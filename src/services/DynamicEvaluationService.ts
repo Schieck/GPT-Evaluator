@@ -1,6 +1,6 @@
 import { AIProviderType } from './types';
-import type { 
-  EvaluationInput, 
+import type {
+  EvaluationInput,
   EvaluationResult,
   EvaluationMetrics,
   EvaluationFeedback,
@@ -14,10 +14,10 @@ import { ProviderConfigService } from './ProviderConfigService';
 
 export class DynamicEvaluationService {
   private static instance: DynamicEvaluationService;
-  
+
   private readonly errorHandler: ErrorHandlingService;
   private readonly configService: ProviderConfigService;
-  
+
   constructor(
     private readonly evaluationService: EvaluationService,
     configService: ProviderConfigService,
@@ -120,12 +120,18 @@ export class DynamicEvaluationService {
     const strengths = new Set<string>();
     const weaknesses = new Set<string>();
     const suggestions = new Set<string>();
+    const allReferences: any[] = [];
     let promptRequestSuggestion = '';
 
     results.forEach(result => {
       result.feedback.strengths.forEach(s => strengths.add(s));
       result.feedback.weaknesses.forEach(w => weaknesses.add(w));
       result.feedback.suggestions.forEach(s => suggestions.add(s));
+
+      // Combine references from all providers
+      if (result.feedback.references) {
+        allReferences.push(...result.feedback.references);
+      }
 
       if (!promptRequestSuggestion || result.feedback.promptRequestSuggestion.length > promptRequestSuggestion.length) {
         promptRequestSuggestion = result.feedback.promptRequestSuggestion;
@@ -140,7 +146,8 @@ export class DynamicEvaluationService {
       weaknesses: Array.from(weaknesses),
       suggestions: Array.from(suggestions),
       summary,
-      promptRequestSuggestion
+      promptRequestSuggestion,
+      references: allReferences
     };
   }
 

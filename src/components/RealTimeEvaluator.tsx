@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MetricsDisplay } from './evaluation/MetricsDisplay';
 import { DuplicateWarning } from './evaluation/DuplicateWarning';
@@ -37,6 +37,9 @@ export default function RealTimeEvaluator({ userInput, aiResponse, onResultsChan
     handleFeedbackChange
   } = useFeedback();
 
+  const [evaluationProgress, setEvaluationProgress] = useState(0);
+  const [evaluationStage, setEvaluationStage] = useState('');
+
   useEffect(() => {
     checkForDuplicates();
   }, [userInput, aiResponse]);
@@ -48,6 +51,31 @@ export default function RealTimeEvaluator({ userInput, aiResponse, onResultsChan
       });
     }
   }, [hasDuplicate, duplicateEntry]);
+
+  useEffect(() => {
+    if (isEvaluating) {
+      setEvaluationProgress(0);
+      setEvaluationStage('Initializing...');
+
+      const stages = [
+        { progress: 25, text: 'Analyzing prompt...' },
+        { progress: 50, text: 'Evaluating response quality...' },
+        { progress: 75, text: 'Calculating metrics...' },
+        { progress: 90, text: 'Finalizing results...' }
+      ];
+
+      let currentStage = 0;
+      const interval = setInterval(() => {
+        if (currentStage < stages.length) {
+          setEvaluationProgress(stages[currentStage].progress);
+          setEvaluationStage(stages[currentStage].text);
+          currentStage++;
+        }
+      }, 2200);
+
+      return () => clearInterval(interval);
+    }
+  }, [isEvaluating]);
 
   const showCachedWarning = hasDuplicate && duplicateEntry?.evaluation.id !== currentEvaluationId;
 
@@ -70,15 +98,25 @@ export default function RealTimeEvaluator({ userInput, aiResponse, onResultsChan
           whileTap={{ scale: 0.95 }}
           onClick={handleSubmit}
           disabled={!userInput || !aiResponse || isEvaluating}
-          className={`w-full px-4 py-3 rounded-md text-sm font-medium transition-all duration-200 ${isEvaluating || !userInput || !aiResponse
+          className={`w-full px-4 py-3 rounded-md text-sm font-medium transition-all duration-200 relative overflow-hidden ${isEvaluating || !userInput || !aiResponse
             ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
             : 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white'
             }`}
         >
           {isEvaluating ? (
-            <div className="flex items-center justify-center space-x-2">
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>Evaluating...</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-center space-x-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>{evaluationStage}</span>
+              </div>
+              <div className="w-full bg-white/20 rounded-full h-1 overflow-hidden">
+                <motion.div
+                  className="h-full bg-white/80"
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${evaluationProgress}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
             </div>
           ) : (
             'Validate'

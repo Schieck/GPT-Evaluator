@@ -47,7 +47,8 @@ describe('HistoryService', () => {
       weaknesses: ['Could be more detailed'],
       suggestions: ['Add examples'],
       summary: 'Overall good response',
-      promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations'
+      promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations',
+      references: []
     },
     providerResults: {
       [AIProviderType.OPENAI]: {
@@ -63,7 +64,8 @@ describe('HistoryService', () => {
           weaknesses: ['Could be more detailed'],
           suggestions: ['Add examples'],
           summary: 'Overall good response',
-          promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations'
+          promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations',
+          references: []
         },
         metadata: {
           providerId: AIProviderType.OPENAI,
@@ -85,7 +87,8 @@ describe('HistoryService', () => {
           weaknesses: ['Could use more examples'],
           suggestions: ['Include more specific examples'],
           summary: 'Good response with clear structure',
-          promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations'
+          promptRequestSuggestion: 'Please provide a more detailed response with specific examples and explanations',
+          references: []
         },
         metadata: {
           providerId: AIProviderType.CLAUDE,
@@ -173,7 +176,7 @@ describe('HistoryService', () => {
     test('adds new items to beginning of history', () => {
       const existingHistory = [createMockHistoryEntry()];
       mockLocalStorage.setItem('evaluator-history', JSON.stringify(existingHistory));
-      
+
       const newItem = {
         userInput: 'new prompt',
         aiResponse: 'new response',
@@ -184,10 +187,10 @@ describe('HistoryService', () => {
         }
       };
       service.saveToHistory(newItem);
-      
+
       const lastSetItemCall = mockLocalStorage.setItem.mock.calls[mockLocalStorage.setItem.mock.calls.length - 1];
       const savedHistory = JSON.parse(lastSetItemCall[1]);
-      
+
       expect(savedHistory).toHaveLength(2);
       expect(savedHistory[0]).toMatchObject({
         ...newItem,
@@ -202,12 +205,12 @@ describe('HistoryService', () => {
     test('updates feedback for existing item', () => {
       const mockHistory = [createMockHistoryEntry()];
       mockLocalStorage.setItem('evaluator-history', JSON.stringify(mockHistory));
-      
+
       service.updateFeedback('1', 'new feedback');
-      
+
       const lastSetItemCall = mockLocalStorage.setItem.mock.calls[mockLocalStorage.setItem.mock.calls.length - 1];
       const savedHistory = JSON.parse(lastSetItemCall[1]);
-      
+
       expect(savedHistory).toHaveLength(1);
       expect(savedHistory[0]).toEqual({
         ...mockHistory[0],
@@ -218,9 +221,9 @@ describe('HistoryService', () => {
     test('does not modify history when item not found', () => {
       const mockHistory = [createMockHistoryEntry()];
       mockLocalStorage.setItem('evaluator-history', JSON.stringify(mockHistory));
-      
+
       service.updateFeedback('non-existent', 'new feedback');
-      
+
       const lastSetItemCall = mockLocalStorage.setItem.mock.calls[mockLocalStorage.setItem.mock.calls.length - 1];
       const savedHistory = JSON.parse(lastSetItemCall[1]);
       expect(savedHistory).toEqual(mockHistory);

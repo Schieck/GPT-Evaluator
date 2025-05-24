@@ -27,10 +27,12 @@ interface EvaluationState {
   apiConfigs: ProviderConfig[];
   activeTab: ActiveTab;
   foundConversations: FoundConversation[];
+  lastScanTime: number | null;
   setUserInput: (input: string) => void;
   setAiResponse: (response: string) => void;
   setIsScanning: (isScanning: boolean) => void;
   setActiveTab: (tab: ActiveTab) => void;
+  setLastScanTime: (time: Date | null) => void;
   addFoundConversation: (conversation: Omit<FoundConversation, 'id' | 'status'>) => void;
   updateConversationStatus: (id: string, status: 'approved' | 'rejected') => void;
   clearFoundConversations: () => void;
@@ -49,11 +51,13 @@ export const useStore = create<EvaluationState>()(
         apiConfigs: DEFAULT_CONFIGS,
         activeTab: 'live',
         foundConversations: [],
+        lastScanTime: null,
 
         setUserInput: (input: string) => set({ userInput: input }),
         setAiResponse: (response: string) => set({ aiResponse: response }),
         setIsScanning: (isScanning: boolean) => set({ isScanning }),
         setActiveTab: (tab: ActiveTab) => set({ activeTab: tab }),
+        setLastScanTime: (time: Date | null) => set({ lastScanTime: time ? time.getTime() : null }),
 
         addFoundConversation: (conversation) => {
           const { foundConversations } = get();
@@ -145,7 +149,8 @@ export const useStore = create<EvaluationState>()(
           aiResponse: state.aiResponse,
           apiConfigs: state.apiConfigs,
           foundConversations: state.foundConversations,
-          isScanning: state.isScanning
+          isScanning: state.isScanning,
+          lastScanTime: state.lastScanTime
         })
       }
     )

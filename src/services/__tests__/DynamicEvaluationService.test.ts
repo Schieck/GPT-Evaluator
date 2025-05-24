@@ -29,7 +29,8 @@ describe('DynamicEvaluationService', () => {
       weaknesses: ['Could be more detailed'],
       suggestions: ['Add examples'],
       summary: 'Good response',
-      promptRequestSuggestion: 'Please provide more context'
+      promptRequestSuggestion: 'Please provide more context',
+      references: []
     },
     metadata: {
       providerId: AIProviderType.OPENAI,
@@ -52,7 +53,8 @@ describe('DynamicEvaluationService', () => {
       weaknesses: ['Verbose'],
       suggestions: ['Summarize'],
       summary: 'Very good',
-      promptRequestSuggestion: 'Please provide a more detailed and specific answer with examples'
+      promptRequestSuggestion: 'Please provide a more detailed and specific answer with examples',
+      references: []
     },
     metadata: {
       providerId: AIProviderType.CLAUDE,
@@ -96,7 +98,7 @@ describe('DynamicEvaluationService', () => {
       evaluate: vi.fn().mockResolvedValue(mockResultB),
       initialize: vi.fn()
     } as unknown as AIProvider;
-    vi.spyOn(providerFactory, 'getProvider').mockImplementation((type: AIProviderType) => 
+    vi.spyOn(providerFactory, 'getProvider').mockImplementation((type: AIProviderType) =>
       type === AIProviderType.OPENAI ? mockOpenAIProvider : mockClaudeProvider
     );
 

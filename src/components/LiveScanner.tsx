@@ -29,16 +29,21 @@ export default function LiveScanner() {
         foundConversations,
         addFoundConversation,
         updateConversationStatus,
-        clearFoundConversations
+        clearFoundConversations,
+        lastScanTime,
+        setLastScanTime
     } = useStore();
 
     const historyService = EvaluationHistoryService.getInstance();
 
-    const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
     const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
     const [evaluationResult, setEvaluationResult] = useState<Record<AIProviderType, EvaluationResult> | null>(null);
     const [combinedResult, setCombinedResult] = useState<CombinedEvaluationResult | null>(null);
     const [isEvaluating, setIsEvaluating] = useState(false);
+    const [currentConversation, setCurrentConversation] = useState<FoundConversation | null>(null);
+    const [isCachedResult, setIsCachedResult] = useState(false);
+    const [evaluationProgress, setEvaluationProgress] = useState(0);
+    const [evaluationStage, setEvaluationStage] = useState('');
 
     const {
         userFeedback,
@@ -88,6 +93,63 @@ export default function LiveScanner() {
     const evaluateConversation = async (conversation: FoundConversation) => {
         try {
             setIsEvaluating(true);
+            setCurrentConversation(conversation);
+            setIsCachedResult(false);
+            setEvaluationProgress(0);
+            setEvaluationStage('Checking cache...');
+
+            // Check for duplicate evaluation in history first
+            const { hasDuplicate, duplicateEntry } = historyService.findDuplicate(
+                conversation.userPrompt,
+                conversation.aiResponse
+            );
+
+            if (hasDuplicate && duplicateEntry && duplicateEntry.evaluation.result) {
+                // Use cached result
+                console.log('[LiveScanner] Found duplicate evaluation in history, using cached result');
+                setIsCachedResult(true);
+                setEvaluationStage('Loading from cache...');
+                setEvaluationProgress(100);
+
+                // Add small delay for better UX
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                setEvaluationResult(duplicateEntry.evaluation.result);
+
+                // Calculate combined metrics if not already present
+                const combinedMetrics = duplicateEntry.evaluation.combinedMetrics ||
+                    calculateCombinedMetrics(duplicateEntry.evaluation.result);
+
+                const combinedFeedback = duplicateEntry.evaluation.combinedFeedback || {
+                    strengths: [],
+                    weaknesses: [],
+                    suggestions: [],
+                    summary: 'Combined evaluation from cached results',
+                    promptRequestSuggestion: '',
+                    references: []
+                };
+
+                setCombinedResult({
+                    providerResults: duplicateEntry.evaluation.result,
+                    metrics: combinedMetrics,
+                    feedback: combinedFeedback
+                });
+
+                setLastScanTime(new Date());
+
+                // Send evaluation complete message to background with cached results
+                chrome.runtime.sendMessage({
+                    type: 'EVALUATION_COMPLETE',
+                    data: {
+                        metrics: combinedMetrics,
+                        location: (conversation as any).location
+                    }
+                });
+
+                return; // Exit early, no need to evaluate again
+            }
+
+            // No duplicate found, proceed with evaluation
             const evaluationService = DynamicEvaluationService.getInstance();
             const result = await evaluationService.evaluateWithAllProviders({
                 userPrompt: conversation.userPrompt,
@@ -110,6 +172,15 @@ export default function LiveScanner() {
                     combinedFeedback: result.feedback
                 }
             );
+
+            // Send evaluation complete message to background
+            chrome.runtime.sendMessage({
+                type: 'EVALUATION_COMPLETE',
+                data: {
+                    metrics: result.metrics,
+                    location: (conversation as any).location
+                }
+            });
         } catch (error) {
             handleError(error, 'evaluateConversation');
             setScanStatus('error');
@@ -117,6 +188,36 @@ export default function LiveScanner() {
         } finally {
             setIsEvaluating(false);
         }
+    };
+
+    // Helper function to calculate combined metrics from cached results
+    const calculateCombinedMetrics = (results: Record<AIProviderType, EvaluationResult>) => {
+        const combinedMetrics = {
+            relevance: 0,
+            accuracy: 0,
+            completeness: 0,
+            coherence: 0,
+            overall: 0
+        };
+
+        const validResults = Object.values(results).filter(result => result?.metrics);
+
+        validResults.forEach(result => {
+            combinedMetrics.relevance += result.metrics.relevance;
+            combinedMetrics.accuracy += result.metrics.accuracy;
+            combinedMetrics.completeness += result.metrics.completeness;
+            combinedMetrics.coherence += result.metrics.coherence;
+            combinedMetrics.overall += result.metrics.overall;
+        });
+
+        const providerCount = validResults.length || 1;
+        return {
+            relevance: Math.round(combinedMetrics.relevance / providerCount),
+            accuracy: Math.round(combinedMetrics.accuracy / providerCount),
+            completeness: Math.round(combinedMetrics.completeness / providerCount),
+            coherence: Math.round(combinedMetrics.coherence / providerCount),
+            overall: Math.round(combinedMetrics.overall / providerCount)
+        };
     };
 
     const handleConversationApproval = (conversation: FoundConversation) => {
@@ -146,10 +247,30 @@ export default function LiveScanner() {
     };
 
     useEffect(() => {
+        // Sync with background script's scanning state on mount
+        chrome.runtime.sendMessage({ type: 'GET_SCANNING_STATUS' }, (response) => {
+            if (response?.success && response.isScanning !== undefined) {
+                setIsScanning(response.isScanning);
+                setScanStatus(response.isScanning ? 'scanning' : 'idle');
+            }
+        });
+
         const messageListener = (message: any) => {
             console.log('message', message);
             if (message.type === 'CONVERSATION_READY') {
-                addFoundConversation(message.data.conversation);
+                // Store the conversation but don't show it in UI
+                const conversation = message.data.conversation;
+                if (message.data.location) {
+                    (conversation as any).location = message.data.location;
+                }
+                // Just keep the latest conversation in memory
+                setCurrentConversation(conversation);
+            } else if (message.type === 'CONVERSATION_APPROVED') {
+                // User approved the evaluation from the tooltip
+                const conversation = message.data.conversation;
+                if (conversation) {
+                    evaluateConversation(conversation);
+                }
             } else if (message.type === 'SCAN_ERROR') {
                 setScanStatus('error');
                 setIsScanning(false);
@@ -160,6 +281,29 @@ export default function LiveScanner() {
         chrome.runtime.onMessage.addListener(messageListener);
         return () => chrome.runtime.onMessage.removeListener(messageListener);
     }, []);
+
+    useEffect(() => {
+        if (isEvaluating && !isCachedResult) {
+            const stages = [
+                { progress: 20, text: 'Connecting to AI providers...' },
+                { progress: 40, text: 'Analyzing conversation context...' },
+                { progress: 60, text: 'Evaluating response quality...' },
+                { progress: 80, text: 'Computing trust metrics...' },
+                { progress: 95, text: 'Finalizing evaluation...' }
+            ];
+
+            let currentStage = 0;
+            const interval = setInterval(() => {
+                if (currentStage < stages.length && isEvaluating) {
+                    setEvaluationProgress(stages[currentStage].progress);
+                    setEvaluationStage(stages[currentStage].text);
+                    currentStage++;
+                }
+            }, 2200);
+
+            return () => clearInterval(interval);
+        }
+    }, [isEvaluating, isCachedResult]);
 
     // Sort conversations by timestamp in descending order (newest first)
     const sortedConversations = [...foundConversations].sort((a, b) =>
@@ -192,7 +336,7 @@ export default function LiveScanner() {
                         </h2>
                         {lastScanTime && (
                             <p className="text-sm text-zinc-400">
-                                Last scan: {lastScanTime.toLocaleTimeString()}
+                                Last scan: {new Date(lastScanTime).toLocaleTimeString()}
                             </p>
                         )}
                     </div>
@@ -229,33 +373,42 @@ export default function LiveScanner() {
             </div>
 
             <AnimatePresence mode="wait">
-                {isEvaluating && (
+                {isEvaluating && currentConversation && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
                         className="p-4 bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-lg"
                     >
-                        <div className="flex items-center justify-center space-x-2">
-                            <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                            <span className="text-sm text-zinc-400">Evaluating conversation...</span>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-center space-x-2">
+                                    <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <span className="text-sm text-zinc-400">{evaluationStage}</span>
+                                </div>
+                                <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                    <motion.div
+                                        className="h-full bg-gradient-to-r from-orange-500 to-amber-500"
+                                        initial={{ width: '0%' }}
+                                        animate={{ width: `${evaluationProgress}%` }}
+                                        transition={{ duration: 0.3, ease: "easeOut" }}
+                                    />
+                                </div>
+                            </div>
+                            <motion.div
+                                animate={{ opacity: [0.5, 1, 0.5] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                                className="text-xs text-zinc-500 max-w-md mx-auto space-y-1 p-3 bg-zinc-800/30 rounded-md"
+                            >
+                                <p className="truncate">
+                                    <span className="text-zinc-600">User:</span> {currentConversation.userPrompt}
+                                </p>
+                                <p className="truncate">
+                                    <span className="text-zinc-600">AI:</span> {currentConversation.aiResponse}
+                                </p>
+                            </motion.div>
                         </div>
                     </motion.div>
-                )}
-
-                {foundConversations.length > 0 && (
-                    <div className="space-y-3">
-                        {sortedConversations
-                            .filter(conv => conv.status === 'pending')
-                            .map(conversation => (
-                                <ConversationApproval
-                                    key={conversation.id}
-                                    conversation={conversation}
-                                    onApprove={() => handleConversationApproval(conversation)}
-                                    onReject={() => handleConversationRejection(conversation)}
-                                />
-                            ))}
-                    </div>
                 )}
 
                 {evaluationResult && combinedResult && (
@@ -267,6 +420,19 @@ export default function LiveScanner() {
                         className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/50 backdrop-blur-sm"
                     >
                         <div className="space-y-4">
+                            {isCachedResult && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -5 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="flex items-center gap-2 text-sm text-blue-400 bg-blue-400/10 px-3 py-2 rounded-md"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span>Using cached evaluation from history</span>
+                                </motion.div>
+                            )}
+
                             <MetricsDisplay
                                 metrics={combinedResult.metrics}
                                 feedback={combinedResult.feedback}

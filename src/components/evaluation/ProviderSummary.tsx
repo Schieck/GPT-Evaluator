@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AIProviderType } from '../../services/types';
 import type { EvaluationFeedback, EvaluationMetrics } from '../../services/types';
 import { FeedbackDisplay } from './FeedbackDisplay';
+import { ReferencesDisplay } from './ReferencesDisplay';
 import { ValidationScore } from './ValidationScore';
 import { ClipboardIcon } from '@heroicons/react/16/solid';
 
@@ -141,7 +142,7 @@ export function ProviderSummary({
                                 </div>
                             )}
 
-                            <FeedbackDisplay feedback={feedback} />
+                            <FeedbackDisplay feedback={feedback} references={feedback.references || []} />
 
                             {feedback.suggestions.length > 0 && (
                                 <div className="mt-4 p-3 bg-zinc-800/50 rounded-md border border-purple-500/20">
