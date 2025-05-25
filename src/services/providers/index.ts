@@ -12,15 +12,15 @@ function hasInitialize(
 export class ProviderFactory {
   private static instance: ProviderFactory;
   private providers: Map<AIProviderType, AIProvider> = new Map();
-  
+
   public static getInstance(): ProviderFactory {
     if (!ProviderFactory.instance) {
       ProviderFactory.instance = new ProviderFactory();
     }
     return ProviderFactory.instance;
   }
-  
-  private constructor() {}
+
+  private constructor() { }
 
   public getProvider(type: AIProviderType): AIProvider {
     if (!this.providers.has(type)) {
@@ -28,7 +28,7 @@ export class ProviderFactory {
     }
     return this.providers.get(type)!;
   }
-  
+
   private createProvider(type: AIProviderType): AIProvider {
     switch (type) {
       case AIProviderType.OPENAI:
@@ -39,14 +39,14 @@ export class ProviderFactory {
         throw new Error(`Unknown provider type: ${type}`);
     }
   }
-  
+
   public initializeProvider(type: AIProviderType, apiKey: string, modelVersion?: string): void {
     const provider = this.getProvider(type);
     if (hasInitialize(provider)) {
       provider.initialize(apiKey, modelVersion);
     }
   }
-  
+
   public getAvailableProviders(): AIProviderType[] {
     return Object.values(AIProviderType);
   }
@@ -54,4 +54,16 @@ export class ProviderFactory {
 
 export const providerFactory = ProviderFactory.getInstance();
 
-export { OpenAIProvider, ClaudeProvider }; 
+export { OpenAIProvider, ClaudeProvider };
+
+// Export new instance-based providers
+export { BaseInstanceProvider } from './BaseInstanceProvider';
+export { OpenAIInstanceProvider } from './OpenAIInstanceProvider';
+export { ClaudeInstanceProvider } from './ClaudeInstanceProvider';
+export { ProviderInstanceFactory, providerInstanceFactory } from './ProviderInstanceFactory';
+export {
+  PROVIDER_TEMPLATES,
+  getProviderTemplate,
+  getAllProviderTemplates,
+  isProviderTypeSupported
+} from './ProviderTemplates'; 

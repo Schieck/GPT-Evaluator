@@ -3,19 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AIProviderType } from '../../services/types';
 import type { EvaluationFeedback, EvaluationMetrics } from '../../services/types';
 import { FeedbackDisplay } from './FeedbackDisplay';
-import { ReferencesDisplay } from './ReferencesDisplay';
 import { ValidationScore } from './ValidationScore';
 import { ClipboardIcon } from '@heroicons/react/16/solid';
 
 interface ProviderSummaryProps {
-    provider: AIProviderType;
+    provider: AIProviderType | string;
     feedback: EvaluationFeedback;
     metrics: EvaluationMetrics;
-    userFeedback: string;
-    isEditingFeedback: boolean;
-    onFeedbackEdit: (provider: AIProviderType) => void;
-    onFeedbackSubmit: (provider: AIProviderType) => void;
-    onFeedbackChange: (provider: AIProviderType, value: string) => void;
+    instanceName?: string;
+    instanceModel?: string;
 }
 
 const formatProviderName = (provider: string) => {
@@ -46,11 +42,8 @@ export function ProviderSummary({
     provider,
     feedback,
     metrics,
-    userFeedback,
-    isEditingFeedback,
-    onFeedbackEdit,
-    onFeedbackSubmit,
-    onFeedbackChange,
+    instanceName,
+    instanceModel,
 }: ProviderSummaryProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
@@ -72,30 +65,30 @@ export function ProviderSummary({
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <h3 className="text-xs font-medium text-orange-400 whitespace-nowrap">{formatProviderName(provider)}</h3>
+                    <div className="flex flex-col">
+                        <h3 className="text-xs font-medium text-orange-400 whitespace-nowrap">
+                            {instanceName || formatProviderName(provider as string)}
+                        </h3>
+                        {instanceModel && (
+                            <span className="text-xs text-zinc-500">{instanceModel}</span>
+                        )}
+                    </div>
                     <div className="w-full max-w-2xl">
                         <ValidationScore score={metrics.overall} size="sm" />
                     </div>
                 </div>
-                <motion.div
-                    animate={{ rotate: isExpanded ? 180 : 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex-shrink-0 ml-4"
-                >
-                    <svg
-                        className="w-4 h-4 text-orange-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                        />
-                    </svg>
-                </motion.div>
+
+                <button className="text-zinc-400 hover:text-zinc-300 transition-colors">
+                    {isExpanded ? (
+                        <svg className="w-4 h-4 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    )}
+                </button>
             </div>
 
             <AnimatePresence>
@@ -157,47 +150,6 @@ export function ProviderSummary({
                                     </ul>
                                 </div>
                             )}
-
-                            <div className="mt-4 border-t border-zinc-700 pt-4">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h4 className="text-xs font-medium text-orange-400">Your Feedback</h4>
-                                    {!isEditingFeedback ? (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onFeedbackEdit(provider);
-                                            }}
-                                            className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
-                                        >
-                                            Edit
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onFeedbackSubmit(provider);
-                                            }}
-                                            className="text-xs bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-3 py-1 rounded-md transition-all duration-200"
-                                        >
-                                            Submit
-                                        </button>
-                                    )}
-                                </div>
-                                {isEditingFeedback ? (
-                                    <textarea
-                                        value={userFeedback}
-                                        onChange={(e) => onFeedbackChange(provider, e.target.value)}
-                                        onClick={(e) => e.stopPropagation()}
-                                        placeholder="Enter your feedback here..."
-                                        className="w-full p-3 text-sm border border-zinc-700 rounded-md bg-black text-white focus:ring-1 focus:ring-orange-500 focus:outline-none placeholder-zinc-600"
-                                        rows={3}
-                                    />
-                                ) : (
-                                    <p className="text-sm text-white">
-                                        {userFeedback || 'No feedback provided yet.'}
-                                    </p>
-                                )}
-                            </div>
                         </div>
                     </motion.div>
                 )}

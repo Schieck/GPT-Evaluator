@@ -1,7 +1,3 @@
-import { createRoot } from 'react-dom/client';
-import { EvaluationTooltip } from '../components/evaluation/EvaluationTooltip';
-
-let tooltipRoot: ReturnType<typeof createRoot> | null = null;
 let tooltipContainer: HTMLDivElement | null = null;
 let isEvaluating = false;
 
@@ -209,7 +205,7 @@ const hideTooltip = () => {
 };
 
 // Listen for messages from the background script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
     console.log('[GPT Evaluator Tooltip] Received message:', message);
     if (message.type === 'SHOW_EVALUATION_TOOLTIP') {
         const { position, status } = message.data;
@@ -217,9 +213,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
     } else if (message.type === 'UPDATE_EVALUATION_TOOLTIP') {
         const { position, metrics, status } = message.data;
-        // Only show evaluating or evaluated states if we're actually evaluating
         if (isEvaluating || status === 'evaluated') {
             showTooltip(position, status, metrics);
+            // Reset isEvaluating flag when evaluation is complete
+            if (status === 'evaluated') {
+                isEvaluating = false;
+            }
         }
         sendResponse({ success: true });
     } else if (message.type === 'UPDATE_TOOLTIP_POSITION') {
@@ -237,11 +236,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
 });
 
-// Clean up when the content script is unloaded
 window.addEventListener('unload', () => {
     if (tooltipContainer) {
         tooltipContainer.remove();
         tooltipContainer = null;
     }
-    tooltipRoot = null;
 }); 

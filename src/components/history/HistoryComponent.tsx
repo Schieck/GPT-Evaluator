@@ -1,4 +1,5 @@
 import { useHistoryStore } from '../../store/useHistoryStore';
+import { useStore } from '../../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrashIcon } from '@heroicons/react/16/solid';
 import { formatDistanceToNow } from 'date-fns';
@@ -9,6 +10,7 @@ import type { HistoryEntry } from '../../services/types';
 
 export default function HistoryComponent() {
     const { entries, removeEntry, clearHistory } = useHistoryStore();
+    const { providerInstances } = useStore();
     const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
 
     if (entries.length === 0) {
@@ -28,10 +30,31 @@ export default function HistoryComponent() {
     }
 
     const getOverallScore = (entry: HistoryEntry) => {
-        const scores = Object.values(entry.evaluation.result)
-            .filter(result => result?.metrics?.overall)
-            .map(result => result.metrics.overall);
-        return scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+        if (entry.evaluation.combinedMetrics) {
+            return entry.evaluation.combinedMetrics.overall;
+        }
+
+        if (entry.evaluation.instanceResults) {
+            const scores = Array.from(entry.evaluation.instanceResults.values())
+                .filter(result => result?.metrics?.overall)
+                .map(result => result.metrics.overall);
+            return scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+        }
+
+        return 0;
+    };
+
+    const getProviderSummary = (entry: HistoryEntry) => {
+        if (entry.evaluation.instanceResults && entry.evaluation.instanceResults.size > 0) {
+            const instanceNames = Array.from(entry.evaluation.instanceResults.keys())
+                .map(instanceId => {
+                    const instance = providerInstances.find(inst => inst.id === instanceId);
+                    return instance ? instance.name : instanceId;
+                });
+            return instanceNames.length;
+        }
+
+        return 'Unknown';
     };
 
     return (
@@ -50,6 +73,8 @@ export default function HistoryComponent() {
                 <AnimatePresence mode="popLayout">
                     {entries.map((entry) => {
                         const overallScore = getOverallScore(entry);
+                        const providerSummary = getProviderSummary(entry);
+
                         return (
                             <motion.div
                                 key={entry.id}
@@ -62,11 +87,14 @@ export default function HistoryComponent() {
                             >
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="flex-1">
-                                        <p className="text-sm mb-4 text-zinc-500 line-clamp-2">{entry.userInput}</p>
+                                        <p className="text-sm mb-2 text-zinc-500 line-clamp-2">{entry.userInput}</p>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-xs text-zinc-600">Evaluated by:</span>
+                                            <span className="text-xs text-zinc-400">{providerSummary}</span>
+                                        </div>
                                         <ValidationScore score={overallScore} size="sm" />
                                     </div>
                                     <div className="flex flex-col items-end gap-2">
-
                                         <span className="text-xs text-zinc-500">
                                             {formatDistanceToNow(entry.timestamp, { addSuffix: true })}
                                         </span>

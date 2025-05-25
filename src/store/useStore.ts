@@ -1,9 +1,8 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-import { AIProviderType } from '../services/types';
-import type { ProviderConfig } from '../services/types';
+import { AIProviderType, type ProviderConfig, type ProviderInstance } from '../services/types';
 import { ErrorHandlingService, ErrorCategory, ErrorSeverity } from '../services/ErrorHandlingService';
-import { providerFactory } from '../services/providers';
+import { ProviderInstanceConfigService } from '../services/ProviderInstanceConfigService';
 
 const DEFAULT_CONFIGS: ProviderConfig[] = [
   { type: AIProviderType.OPENAI, apiKey: '', enabled: false, modelVersion: 'gpt-4-turbo-preview' },
@@ -25,20 +24,28 @@ interface EvaluationState {
   aiResponse: string;
   isScanning: boolean;
   apiConfigs: ProviderConfig[];
+  providerInstances: ProviderInstance[];
   activeTab: ActiveTab;
   foundConversations: FoundConversation[];
   lastScanTime: number | null;
+  hasLegacyConfigMigrated: boolean;
   setUserInput: (input: string) => void;
   setAiResponse: (response: string) => void;
   setIsScanning: (isScanning: boolean) => void;
   setActiveTab: (tab: ActiveTab) => void;
   setLastScanTime: (time: Date | null) => void;
-  addFoundConversation: (conversation: Omit<FoundConversation, 'id' | 'status'>) => void;
   updateConversationStatus: (id: string, status: 'approved' | 'rejected') => void;
   clearFoundConversations: () => void;
   initializeProviders: () => Promise<void>;
   saveConfigs: (configs: ProviderConfig[]) => Promise<void>;
   getApiKey: (type: 'openai' | 'claude') => string;
+
+  // New instance-based methods
+  addProviderInstance: (instance: ProviderInstance) => void;
+  removeProviderInstance: (instanceId: string) => void;
+  updateProviderInstance: (instanceId: string, updates: Partial<ProviderInstance>) => void;
+  getProviderInstances: () => ProviderInstance[];
+  migrateLegacyConfigs: () => void;
 }
 
 export const useStore = create<EvaluationState>()(
@@ -49,37 +56,17 @@ export const useStore = create<EvaluationState>()(
         aiResponse: '',
         isScanning: false,
         apiConfigs: DEFAULT_CONFIGS,
+        providerInstances: [],
         activeTab: 'live',
         foundConversations: [],
         lastScanTime: null,
+        hasLegacyConfigMigrated: false,
 
         setUserInput: (input: string) => set({ userInput: input }),
         setAiResponse: (response: string) => set({ aiResponse: response }),
         setIsScanning: (isScanning: boolean) => set({ isScanning }),
         setActiveTab: (tab: ActiveTab) => set({ activeTab: tab }),
         setLastScanTime: (time: Date | null) => set({ lastScanTime: time ? time.getTime() : null }),
-
-        addFoundConversation: (conversation) => {
-          const { foundConversations } = get();
-          // Check for duplicates
-          const isDuplicate = foundConversations.some(
-            fc => fc.userPrompt === conversation.userPrompt &&
-              fc.aiResponse === conversation.aiResponse
-          );
-
-          if (!isDuplicate) {
-            set({
-              foundConversations: [
-                ...foundConversations,
-                {
-                  ...conversation,
-                  id: crypto.randomUUID(),
-                  status: 'pending'
-                }
-              ]
-            });
-          }
-        },
 
         updateConversationStatus: (id, status) => {
           const { foundConversations } = get();
@@ -98,20 +85,52 @@ export const useStore = create<EvaluationState>()(
           return config?.apiKey || '';
         },
 
+        addProviderInstance: (instance: ProviderInstance) => {
+          const configService = ProviderInstanceConfigService.getInstance();
+          configService.addProviderInstance(instance);
+          set({ providerInstances: configService.getAllProviderInstances() });
+        },
+
+        removeProviderInstance: (instanceId: string) => {
+          const configService = ProviderInstanceConfigService.getInstance();
+          configService.removeProviderInstance(instanceId);
+          set({ providerInstances: configService.getAllProviderInstances() });
+        },
+
+        updateProviderInstance: (instanceId: string, updates: Partial<ProviderInstance>) => {
+          const configService = ProviderInstanceConfigService.getInstance();
+          configService.updateProviderInstance(instanceId, updates);
+          set({ providerInstances: configService.getAllProviderInstances() });
+        },
+
+        getProviderInstances: () => {
+          const configService = ProviderInstanceConfigService.getInstance();
+          const instances = configService.getAllProviderInstances();
+          set({ providerInstances: instances });
+          return instances;
+        },
+
+        migrateLegacyConfigs: () => {
+          const { apiConfigs, hasLegacyConfigMigrated } = get();
+          if (hasLegacyConfigMigrated) return;
+
+          const configService = ProviderInstanceConfigService.getInstance();
+          configService.migrateFromLegacyConfig(apiConfigs);
+          set({
+            providerInstances: configService.getAllProviderInstances(),
+            hasLegacyConfigMigrated: true
+          });
+        },
+
         initializeProviders: async () => {
           const errorHandler = ErrorHandlingService.getInstance();
           try {
-            const configs = get().apiConfigs;
+            const { migrateLegacyConfigs } = get();
+            const configService = ProviderInstanceConfigService.getInstance();
 
-            const openAiConfig = configs.find(c => c.type === AIProviderType.OPENAI);
-            if (openAiConfig?.apiKey) {
-              providerFactory.initializeProvider(AIProviderType.OPENAI, openAiConfig.apiKey, openAiConfig.modelVersion);
-            }
+            migrateLegacyConfigs();
 
-            const claudeConfig = configs.find(c => c.type === AIProviderType.CLAUDE);
-            if (claudeConfig?.apiKey) {
-              providerFactory.initializeProvider(AIProviderType.CLAUDE, claudeConfig.apiKey, claudeConfig.modelVersion);
-            }
+            set({ providerInstances: configService.getAllProviderInstances() });
           } catch (error) {
             errorHandler.handleError(error, 'Store.initializeProviders', {
               category: ErrorCategory.STORAGE,
@@ -125,15 +144,8 @@ export const useStore = create<EvaluationState>()(
           try {
             set({ apiConfigs: configs });
 
-            const openAiConfig = configs.find(c => c.type === AIProviderType.OPENAI);
-            if (openAiConfig?.apiKey) {
-              providerFactory.initializeProvider(AIProviderType.OPENAI, openAiConfig.apiKey, openAiConfig.modelVersion);
-            }
-
-            const claudeConfig = configs.find(c => c.type === AIProviderType.CLAUDE);
-            if (claudeConfig?.apiKey) {
-              providerFactory.initializeProvider(AIProviderType.CLAUDE, claudeConfig.apiKey, claudeConfig.modelVersion);
-            }
+            const configService = ProviderInstanceConfigService.getInstance();
+            set({ providerInstances: configService.getAllProviderInstances() });
           } catch (error) {
             errorHandler.handleError(error, 'Store.saveConfigs', {
               category: ErrorCategory.STORAGE,
@@ -148,9 +160,11 @@ export const useStore = create<EvaluationState>()(
           userInput: state.userInput,
           aiResponse: state.aiResponse,
           apiConfigs: state.apiConfigs,
+          providerInstances: state.providerInstances,
           foundConversations: state.foundConversations,
           isScanning: state.isScanning,
-          lastScanTime: state.lastScanTime
+          lastScanTime: state.lastScanTime,
+          hasLegacyConfigMigrated: state.hasLegacyConfigMigrated
         })
       }
     )

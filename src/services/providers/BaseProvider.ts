@@ -1,8 +1,8 @@
-import type { 
-  AIProvider, 
-  AIProviderType, 
-  EvaluationInput, 
-  EvaluationResult 
+import type {
+  AIProvider,
+  AIProviderType,
+  EvaluationInput,
+  EvaluationResult
 } from '../types';
 import { ErrorHandlingService } from '../ErrorHandlingService';
 

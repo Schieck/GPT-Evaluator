@@ -1,12 +1,10 @@
+import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import { MetricsDisplay } from '../evaluation/MetricsDisplay';
 import { ProviderSummary } from '../evaluation/ProviderSummary';
-import { useFeedback } from '../../hooks/useFeedback';
-import { useHistoryStore } from '../../store/useHistoryStore';
+import { MetricsDisplay } from '../evaluation/MetricsDisplay';
+import { useStore } from '../../store/useStore';
 import type { HistoryEntry } from '../../services/types';
 import { AIProviderType } from '../../services/types';
-import { useEffect } from 'react';
 
 interface HistoryDetailModalProps {
     isOpen: boolean;
@@ -17,121 +15,128 @@ interface HistoryDetailModalProps {
 export function HistoryDetailModal({ isOpen, onClose, entry }: HistoryDetailModalProps) {
     if (!isOpen || !entry) return null;
 
-    const updateFeedback = useHistoryStore(state => state.updateFeedback);
-
-    const {
-        userFeedback,
-        isEditingFeedback,
-        handleFeedbackSubmit,
-        handleFeedbackEdit,
-        handleFeedbackChange,
-        resetFeedback
-    } = useFeedback();
+    const { providerInstances } = useStore();
 
     useEffect(() => {
-        if (entry) {
-            Object.entries(entry.evaluation.result).forEach(([provider, _]) => {
-                if (entry.userFeedback) {
-                    handleFeedbackChange(provider as AIProviderType, entry.userFeedback);
-                }
-            });
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+
+        if (isOpen) {
+            document.addEventListener('keydown', handleEscape);
+            document.body.style.overflow = 'hidden';
         }
-        return () => resetFeedback();
-    }, [entry?.id]);
 
-    const handleFeedbackSubmitWithSave = (provider: AIProviderType) => {
-        const feedback = userFeedback[provider];
-        updateFeedback(entry.id, provider, feedback);
-        handleFeedbackSubmit(provider);
-    };
+        return () => {
+            document.removeEventListener('keydown', handleEscape);
+            document.body.style.overflow = 'unset';
+        };
+    }, [isOpen, onClose]);
 
-    const combinedMetrics = {
-        relevance: 0,
-        accuracy: 0,
-        completeness: 0,
-        coherence: 0,
-        overall: 0
-    };
-
-    Object.values(entry.evaluation.result).forEach(result => {
-        combinedMetrics.relevance += result.metrics.relevance;
-        combinedMetrics.accuracy += result.metrics.accuracy;
-        combinedMetrics.completeness += result.metrics.completeness;
-        combinedMetrics.coherence += result.metrics.coherence;
-        combinedMetrics.overall += result.metrics.overall;
-    });
-
-    const providerCount = Object.keys(entry.evaluation.result).length;
-    const metrics = {
-        relevance: Math.round(combinedMetrics.relevance / providerCount),
-        accuracy: Math.round(combinedMetrics.accuracy / providerCount),
-        completeness: Math.round(combinedMetrics.completeness / providerCount),
-        coherence: Math.round(combinedMetrics.coherence / providerCount),
-        overall: Math.round(combinedMetrics.overall / providerCount)
+    const combinedFeedback = entry.evaluation.combinedFeedback || {
+        strengths: [],
+        weaknesses: [],
+        suggestions: [],
+        summary: 'No feedback available',
+        promptRequestSuggestion: '',
+        references: []
     };
 
     return (
         <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                onClick={onClose}
-            >
+            {isOpen && (
                 <motion.div
-                    initial={{ scale: 0.95, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.95, opacity: 0 }}
-                    className="bg-zinc-900 rounded-lg border border-zinc-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-                    onClick={e => e.stopPropagation()}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    onClick={onClose}
                 >
-                    <div className="p-6 space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-medium text-orange-400">Evaluation Details</h2>
-                            <button
-                                onClick={onClose}
-                                className="p-1 text-zinc-500 hover:text-zinc-300 rounded-full hover:bg-zinc-800"
-                            >
-                                <XMarkIcon className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <h3 className="text-sm font-medium text-zinc-300">User Input</h3>
-                                <p className="text-sm text-zinc-500 whitespace-pre-wrap">{entry.userInput}</p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <h3 className="text-sm font-medium text-zinc-300">AI Response</h3>
-                                <p className="text-sm text-zinc-500 whitespace-pre-wrap">{entry.aiResponse}</p>
+                    <motion.div
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.95, opacity: 0 }}
+                        className="bg-zinc-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="p-6 space-y-6">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h2 className="text-xl font-semibold text-white">Evaluation Details</h2>
+                                    <p className="text-sm text-zinc-400 mt-1">
+                                        {new Date(entry.timestamp).toLocaleString()}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={onClose}
+                                    className="text-zinc-400 hover:text-zinc-300 transition-colors"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
                             </div>
 
                             <div className="space-y-4">
-                                <MetricsDisplay
-                                    metrics={metrics}
-                                    feedback={entry.evaluation.combinedFeedback}
-                                />
+                                <div>
+                                    <h3 className="text-sm font-medium text-blue-400 mb-2">User Input</h3>
+                                    <p className="text-sm text-white bg-zinc-800/50 p-3 rounded-md">
+                                        {entry.userInput}
+                                    </p>
+                                </div>
 
-                                {Object.entries(entry.evaluation.result).map(([provider, result]) => (
-                                    <ProviderSummary
-                                        key={provider}
-                                        provider={provider as AIProviderType}
-                                        feedback={result.feedback}
-                                        metrics={result.metrics}
-                                        userFeedback={userFeedback[provider as AIProviderType]}
-                                        isEditingFeedback={isEditingFeedback[provider as AIProviderType]}
-                                        onFeedbackEdit={handleFeedbackEdit}
-                                        onFeedbackSubmit={handleFeedbackSubmitWithSave}
-                                        onFeedbackChange={handleFeedbackChange}
-                                    />
-                                ))}
+                                <div>
+                                    <h3 className="text-sm font-medium text-green-400 mb-2">AI Response</h3>
+                                    <p className="text-sm text-white bg-zinc-800/50 p-3 rounded-md">
+                                        {entry.aiResponse}
+                                    </p>
+                                </div>
                             </div>
+
+                            {entry.evaluation.combinedMetrics && (
+                                <div className="border-t border-zinc-700 pt-6">
+                                    <h3 className="text-lg font-medium text-white mb-4">Combined Results</h3>
+                                    <MetricsDisplay
+                                        metrics={entry.evaluation.combinedMetrics}
+                                        feedback={combinedFeedback}
+                                    />
+                                </div>
+                            )}
+
+                            {entry.evaluation.instanceResults && entry.evaluation.instanceResults.size > 0 && (
+                                <div className="border-t border-zinc-700 pt-6">
+                                    <h3 className="text-lg font-medium text-white mb-4">Provider Results</h3>
+
+                                    <div className="space-y-3">
+                                        <h4 className="text-sm font-medium text-zinc-400">Individual Provider Results</h4>
+
+                                        {/* Render instance-based results */}
+                                        {entry.evaluation.instanceResults && Array.from(entry.evaluation.instanceResults.entries()).map(([instanceId, result]) => {
+                                            const instance = providerInstances.find(inst => inst.id === instanceId);
+                                            const providerType = instance?.type === 'openai' ? AIProviderType.OPENAI :
+                                                instance?.type === 'claude' ? AIProviderType.CLAUDE :
+                                                    AIProviderType.OPENAI; // fallback
+
+                                            return (
+                                                <ProviderSummary
+                                                    key={instanceId}
+                                                    provider={providerType}
+                                                    feedback={result.feedback}
+                                                    metrics={result.metrics}
+                                                    instanceName={instance?.name}
+                                                    instanceModel={instance?.config.model}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    </div>
+                    </motion.div>
                 </motion.div>
-            </motion.div>
+            )}
         </AnimatePresence>
     );
 } 
