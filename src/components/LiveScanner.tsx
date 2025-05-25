@@ -10,12 +10,13 @@ import { NoProvidersWarning } from './evaluation/NoProvidersWarning';
 import { ErrorCategory, ErrorSeverity } from '../services/ErrorHandlingService';
 import { MetricsDisplay } from './evaluation/MetricsDisplay';
 import { ProviderSummary } from './evaluation/ProviderSummary';
-import { AIProviderType } from '../services/types';
 import type { FoundConversation } from '../store/useStore';
 
 interface MessageResponse {
     success: boolean;
     error?: string;
+    isScanning?: boolean;
+    data?: any;
 }
 
 type ScanStatus = 'idle' | 'scanning' | 'error';
@@ -58,22 +59,46 @@ export default function LiveScanner() {
 
     const toggleScanning = async () => {
         try {
+            console.log('[LiveScanner] toggleScanning - current isScanning:', isScanning);
             const messageType = isScanning ? 'STOP_SCANNING' : 'START_SCANNING';
+
+            const newScanningState = !isScanning;
+            setIsScanning(newScanningState);
+            setScanStatus(newScanningState ? 'scanning' : 'idle');
 
             const response = await new Promise<MessageResponse>((resolve) => {
                 chrome.runtime.sendMessage({ type: messageType }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.warn('[LiveScanner] Message port error:', chrome.runtime.lastError);
+                        resolve({ success: false, error: chrome.runtime.lastError.message });
+                        return;
+                    }
+                    console.log(`[LiveScanner] ${messageType} response:`, response);
                     resolve(response as MessageResponse);
                 });
             });
 
             if (!response.success) {
+                setIsScanning(!newScanningState);
+                setScanStatus(!newScanningState ? 'scanning' : 'idle');
                 throw new Error(response.error || 'Failed to toggle scanning');
             }
 
-            setIsScanning(!isScanning);
-            setScanStatus(isScanning ? 'idle' : 'scanning');
-
-            if (!isScanning) {
+            if (isScanning) {
+                await Promise.all([
+                    new Promise<void>((resolve) => {
+                        chrome.runtime.sendMessage({ type: 'HIDE_EVALUATION_TOOLTIP' }, () => resolve());
+                    }),
+                    new Promise<void>((resolve) => {
+                        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                            if (tabs[0]?.id) {
+                                chrome.tabs.sendMessage(tabs[0].id, { type: 'HIDE_EVALUATION_TOOLTIP' }, () => resolve());
+                            } else {
+                                resolve();
+                            }
+                        });
+                    })
+                ]);
                 setLastScanTime(new Date());
                 clearFoundConversations();
             }
@@ -103,15 +128,34 @@ export default function LiveScanner() {
     };
 
     useEffect(() => {
-        chrome.runtime.sendMessage({ type: 'GET_SCANNING_STATUS' }, (response) => {
-            if (response?.success && response.isScanning !== undefined) {
-                setIsScanning(response.isScanning);
-                setScanStatus(response.isScanning ? 'scanning' : 'idle');
+        const getInitialStatus = async () => {
+            try {
+                const response = await new Promise<MessageResponse>((resolve) => {
+                    chrome.runtime.sendMessage({ type: 'GET_SCANNING_STATUS' }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn('[LiveScanner] Message port error:', chrome.runtime.lastError);
+                            resolve({ success: false, error: chrome.runtime.lastError.message });
+                            return;
+                        }
+                        resolve(response as MessageResponse);
+                    });
+                });
+
+                console.log('[LiveScanner] GET_SCANNING_STATUS response:', response);
+                if (response?.success && response.isScanning !== undefined && response.isScanning !== isScanning) {
+                    console.log('[LiveScanner] Setting isScanning to:', response.isScanning);
+                    setIsScanning(response.isScanning);
+                    setScanStatus(response.isScanning ? 'scanning' : 'idle');
+                }
+            } catch (error) {
+                console.error('[LiveScanner] Error getting initial status:', error);
             }
-        });
+        };
+
+        getInitialStatus();
 
         const messageListener = (message: any) => {
-            console.log('message', message);
+            console.log('[LiveScanner] Received message:', message);
             if (message.type === 'CONVERSATION_READY') {
                 const conversation = message.data.conversation;
                 if (message.data.location) {
@@ -126,12 +170,18 @@ export default function LiveScanner() {
                 setScanStatus('error');
                 setIsScanning(false);
                 handleError(new Error(message.error), 'scanListener');
+            } else if (message.type === 'SCANNING_STATE_CHANGED') {
+                console.log('[LiveScanner] Scanning state changed to:', message.isScanning);
+                if (message.isScanning !== isScanning) {
+                    setIsScanning(message.isScanning);
+                    setScanStatus(message.isScanning ? 'scanning' : 'idle');
+                }
             }
         };
 
         chrome.runtime.onMessage.addListener(messageListener);
         return () => chrome.runtime.onMessage.removeListener(messageListener);
-    }, []);
+    }, [setIsScanning, handleEvaluateConversation, isScanning]);
 
     return (
         <div className="space-y-6">
@@ -272,7 +322,7 @@ export default function LiveScanner() {
                                         return (
                                             <ProviderSummary
                                                 key={instanceId}
-                                                provider={instance.type as AIProviderType}
+                                                provider={instance.type}
                                                 feedback={result.feedback}
                                                 metrics={result.metrics}
                                                 instanceName={instance.name}

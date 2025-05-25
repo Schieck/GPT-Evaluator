@@ -1,5 +1,5 @@
-// Why: Manages communication between content script and popup,
-//      handles message processing and API calls
+import type { ValidatorConfig } from './types/messages';
+
 interface Conversation {
   userPrompt: string;
   aiResponse: string;
@@ -20,8 +20,15 @@ interface ApiRequest {
   body: any;
 }
 
+interface RegisteredValidator {
+  name: string;
+  config: ValidatorConfig;
+  tabId?: number;
+}
+
 let isScanning = false;
 let currentConversation: Conversation | null = null;
+let registeredValidators = new Map<string, RegisteredValidator>();
 
 console.log('[Background] Background script loaded');
 
@@ -91,7 +98,13 @@ const handleNewMessage = (request: any, sendResponse: (response: MessageResponse
     return;
   }
 
-  const { assistantMessage, userMessage, timestamp, location } = request.data;
+  const data = request.payload || request.data || {};
+  const { assistantMessage, userMessage, timestamp, location } = data;
+
+  if (!userMessage || !assistantMessage) {
+    sendResponse({ success: false, error: 'Incomplete conversation data' });
+    return;
+  }
 
   currentConversation = {
     userPrompt: userMessage,
@@ -100,35 +113,185 @@ const handleNewMessage = (request: any, sendResponse: (response: MessageResponse
     location: location
   };
 
-  if (currentConversation.userPrompt?.length > 0 && currentConversation.aiResponse?.length > 0) {
-    chrome.runtime.sendMessage({
-      type: 'CONVERSATION_READY',
-      data: {
-        conversation: currentConversation,
-        location
-      }
-    }).then(() => {
-      if (location) {
-        sendMessageToContentScript({
-          type: 'SHOW_EVALUATION_TOOLTIP',
-          data: {
-            position: location,
-            status: 'pending'
-          }
-        });
-      }
-    }).catch(error => {
-      console.error('[Background] Failed to forward conversation to popup:', error);
-    });
+  chrome.runtime.sendMessage({
+    type: 'CONVERSATION_READY',
+    data: {
+      conversation: currentConversation,
+      location
+    }
+  }).then(() => {
+    if (location) {
+      sendMessageToContentScript({
+        type: 'SHOW_EVALUATION_TOOLTIP',
+        data: {
+          position: location,
+          status: 'pending'
+        }
+      });
+    }
+    sendResponse({ success: true });
+  }).catch(error => {
+    console.error('[Background] Failed to forward conversation to popup:', error);
+    sendResponse({ success: false, error: error.message });
+  });
+};
+
+const handleValidatorRegistration = (request: any, sender: chrome.runtime.MessageSender, sendResponse: (response: MessageResponse) => void) => {
+  const { validatorName, payload } = request;
+
+  if (!validatorName || !payload?.config) {
+    sendResponse({ success: false, error: 'Invalid validator registration data' });
+    return;
   }
+
+  const validator: RegisteredValidator = {
+    name: validatorName,
+    config: payload.config,
+    tabId: sender.tab?.id
+  };
+
+  registeredValidators.set(validatorName, validator);
+  console.log(`[Background] ✅ Registered validator: ${validatorName}`);
 
   sendResponse({ success: true });
 };
 
-chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
+const handleValidatorUnregistration = (request: any, sendResponse: (response: MessageResponse) => void) => {
+  const { validatorName } = request;
+
+  if (!validatorName) {
+    sendResponse({ success: false, error: 'Validator name required' });
+    return;
+  }
+
+  const removed = registeredValidators.delete(validatorName);
+  if (removed) {
+    console.log(`[Background] ❌ Unregistered validator: ${validatorName}`);
+  }
+
+  sendResponse({ success: true, data: { removed } });
+};
+
+const handleValidateRequest = (request: any, sendResponse: (response: MessageResponse) => void) => {
+  const { validatorName, payload } = request;
+
+  if (!validatorName || !payload) {
+    sendResponse({ success: false, error: 'Invalid validation request' });
+    return;
+  }
+
+  sendMessageToContentScript({
+    type: 'VALIDATE_REQUEST',
+    validatorName,
+    payload
+  }).then((response) => {
+    sendResponse(response);
+  }).catch(error => {
+    sendResponse({ success: false, error: error.message });
+  });
+};
+
+const handleValidateResponse = (request: any, sendResponse: (response: MessageResponse) => void) => {
+  const { validatorName, payload } = request;
+
+  console.log(`[Background] Validation response from ${validatorName}:`, payload);
+
+  chrome.runtime.sendMessage({
+    type: 'VALIDATOR_RESULT',
+    validatorName,
+    payload
+  }).catch(error => {
+    console.error('[Background] Failed to forward validation result:', error);
+  });
+
+  sendResponse({ success: true });
+};
+
+const handleValidatorError = (request: any, sendResponse: (response: MessageResponse) => void) => {
+  const { validatorName, payload } = request;
+
+  console.error(`[Background] Validator error from ${validatorName}:`, payload);
+
+  chrome.runtime.sendMessage({
+    type: 'VALIDATOR_ERROR_NOTIFICATION',
+    validatorName,
+    payload
+  }).catch(error => {
+    console.error('[Background] Failed to forward validator error:', error);
+  });
+
+  sendResponse({ success: true });
+};
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.validatorName) {
+    switch (request.type) {
+      case 'NEW_MESSAGE':
+        handleNewMessage(request, sendResponse);
+        return true;
+
+      case 'CONTENT_SCRIPT_READY':
+        console.log(`[Background] Validator ${request.validatorName} ready`);
+        sendResponse({ success: true });
+        return true;
+
+      case 'UPDATE_TOOLTIP_POSITION':
+        if (request.payload?.location) {
+          sendMessageToContentScript({
+            type: 'UPDATE_TOOLTIP_POSITION',
+            data: { location: request.payload.location }
+          }).then(() => sendResponse({ success: true }))
+            .catch(error => sendResponse({ success: false, error: error.message }));
+        } else {
+          sendResponse({ success: false, error: 'No location provided' });
+        }
+        return true;
+    }
+  }
+
   switch (request.type) {
-    case 'CONTENT_SCRIPT_READY':
-      sendResponse({ success: true });
+    case 'VALIDATOR_REGISTER':
+      handleValidatorRegistration(request, sender, sendResponse);
+      break;
+
+    case 'VALIDATOR_UNREGISTER':
+      handleValidatorUnregistration(request, sendResponse);
+      break;
+
+    case 'VALIDATE_REQUEST':
+      handleValidateRequest(request, sendResponse);
+      break;
+
+    case 'VALIDATE_RESPONSE':
+      handleValidateResponse(request, sendResponse);
+      break;
+
+    case 'VALIDATOR_ERROR':
+      handleValidatorError(request, sendResponse);
+      break;
+
+    case 'SHOW_VALIDATOR_TOOLTIP':
+      sendMessageToContentScript({
+        type: 'SHOW_VALIDATOR_TOOLTIP',
+        data: request.data
+      }).then(() => sendResponse({ success: true }))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      break;
+
+    case 'UPDATE_VALIDATOR_TOOLTIP':
+      sendMessageToContentScript({
+        type: 'UPDATE_VALIDATOR_TOOLTIP',
+        data: request.data
+      }).then(() => sendResponse({ success: true }))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      break;
+
+    case 'HIDE_VALIDATOR_TOOLTIP':
+      sendMessageToContentScript({
+        type: 'HIDE_VALIDATOR_TOOLTIP',
+        data: request.data
+      }).then(() => sendResponse({ success: true }))
+        .catch(error => sendResponse({ success: false, error: error.message }));
       break;
 
     case 'API_CALL':
@@ -139,42 +302,45 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
       sendResponse({ success: true, isScanning });
       break;
 
-    case 'UPDATE_TOOLTIP_POSITION':
-      if (request.data?.location) {
-        sendMessageToContentScript({
-          type: 'UPDATE_TOOLTIP_POSITION',
-          data: { location: request.data.location }
-        }).then(() => sendResponse({ success: true }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
-      } else {
-        sendResponse({ success: false, error: 'No location provided' });
-      }
-      break;
-
     case 'START_SCANNING':
       isScanning = true;
-      sendMessageToContentScript({ type: 'START_SCANNING' })
-        .then(() => sendResponse({ success: true }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      break;
-
-    case 'STOP_SCANNING':
-      isScanning = false;
-      sendMessageToContentScript({ type: 'STOP_SCANNING' })
+      sendMessageToContentScript({
+        type: 'START_SCANNING',
+        validatorName: 'chatgpt-monitor'
+      })
         .then(() => {
-          currentConversation = null;
+          chrome.runtime.sendMessage({
+            type: 'SCANNING_STATE_CHANGED',
+            isScanning: true
+          }).catch((e) => {
+            console.error(e)
+          });
           sendResponse({ success: true });
         })
         .catch(error => sendResponse({ success: false, error: error.message }));
       break;
 
-    case 'NEW_MESSAGE':
-      handleNewMessage(request, sendResponse);
+    case 'STOP_SCANNING':
+      isScanning = false;
+      currentConversation = null;
+      sendMessageToContentScript({
+        type: 'STOP_SCANNING',
+        validatorName: 'chatgpt-monitor'
+      })
+        .then(() => {
+          chrome.runtime.sendMessage({
+            type: 'SCANNING_STATE_CHANGED',
+            isScanning: false
+          }).catch((e) => {
+            console.error(e)
+          });
+          sendResponse({ success: true });
+        })
+        .catch(error => sendResponse({ success: false, error: error.message }));
       break;
 
     case 'APPROVE_EVALUATION':
       if (currentConversation) {
-        // Update tooltip to show evaluating state
         sendMessageToContentScript({
           type: 'UPDATE_EVALUATION_TOOLTIP',
           data: {
@@ -183,7 +349,6 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
           }
         });
 
-        // Forward the conversation to the popup for evaluation
         chrome.runtime.sendMessage({
           type: 'CONVERSATION_APPROVED',
           data: {
@@ -202,7 +367,6 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
 
     case 'REJECT_EVALUATION':
       currentConversation = null;
-      // Hide the tooltip
       sendMessageToContentScript({
         type: 'HIDE_EVALUATION_TOOLTIP'
       }).then(() => sendResponse({ success: true }))
@@ -211,7 +375,6 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
 
     case 'EVALUATION_COMPLETE':
       if (request.data?.metrics) {
-        // Update tooltip with evaluation results
         sendMessageToContentScript({
           type: 'UPDATE_EVALUATION_TOOLTIP',
           data: {

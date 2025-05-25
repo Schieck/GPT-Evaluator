@@ -1,5 +1,6 @@
 let tooltipContainer: HTMLDivElement | null = null;
 let isEvaluating = false;
+let currentValidatorName: string | null = null;
 
 const createTooltipContainer = () => {
     if (tooltipContainer) return;
@@ -21,8 +22,17 @@ const createTooltipContainer = () => {
     document.body.appendChild(tooltipContainer);
 };
 
-const createTooltipContent = (status: 'pending' | 'evaluated' | 'evaluating', metrics?: any) => {
+const createTooltipContent = (status: 'pending' | 'evaluated' | 'evaluating' | 'validator', metrics?: any, validatorName?: string, validatorData?: any) => {
     if (!tooltipContainer) return;
+
+    if (status === 'validator' && validatorData && validatorName) {
+        tooltipContainer.style.padding = '0.75rem';
+
+        const validatorContent = createValidatorTooltipContent(validatorName, validatorData);
+        tooltipContainer.innerHTML = '';
+        tooltipContainer.appendChild(validatorContent);
+        return;
+    }
 
     // If evaluating, show only the evaluating state
     if (status === 'evaluating') {
@@ -123,7 +133,6 @@ const createTooltipContent = (status: 'pending' | 'evaluated' | 'evaluating', me
         </style>
     `;
 
-    // Add hover event listeners
     const tooltipWrapper = tooltipContainer.querySelector('.tooltip-wrapper');
     const buttonsContainer = tooltipContainer.querySelector('.buttons-container') as HTMLElement;
     const rejectBtn = tooltipContainer.querySelector('.reject-btn');
@@ -161,9 +170,101 @@ const createTooltipContent = (status: 'pending' | 'evaluated' | 'evaluating', me
     approveBtn?.addEventListener('click', () => {
         isEvaluating = true;
         chrome.runtime.sendMessage({ type: 'APPROVE_EVALUATION' });
-        // Show evaluating state immediately
         createTooltipContent('evaluating');
     });
+};
+
+const createValidatorTooltipContent = (validatorName: string, data: any): HTMLElement => {
+    const container = document.createElement('div');
+    container.className = `validator-tooltip validator-tooltip-${validatorName}`;
+    container.style.cssText = `
+        color: white;
+        font-size: 0.875rem;
+        min-width: 200px;
+    `;
+
+    switch (validatorName) {
+        case 'example-validator':
+            return createExampleValidatorContent(data);
+        case 'chatgpt-monitor':
+            return createMonitorValidatorContent(data);
+        default:
+            return createGenericValidatorContent(validatorName, data);
+    }
+};
+
+const createExampleValidatorContent = (data: any): HTMLElement => {
+    const container = document.createElement('div');
+    const scoreColor = getScoreColor(data.score || 0);
+
+    container.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <div style="font-weight: bold;">Example Validator</div>
+            <div style="padding: 0.125rem 0.5rem; border-radius: 9999px; ${scoreColor}">
+                ${data.score || 0}%
+            </div>
+        </div>
+        <div style="font-size: 0.75rem; color: #a1a1aa; margin-bottom: 0.5rem;">
+            ${data.message || 'No message'}
+        </div>
+        ${data.wordCount ? `
+            <div style="font-size: 0.75rem; color: #a1a1aa;">
+                Words: ${data.wordCount} | 
+                Questions: ${data.hasQuestions ? '✓' : '✗'} | 
+                Exclamations: ${data.hasExclamations ? '✓' : '✗'}
+            </div>
+        ` : ''}
+    `;
+
+    return container;
+};
+
+const createMonitorValidatorContent = (data: any): HTMLElement => {
+    const container = document.createElement('div');
+
+    container.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <div style="font-weight: bold;">ChatGPT Monitor</div>
+            <div style="padding: 0.125rem 0.5rem; border-radius: 9999px; background: rgba(34, 197, 94, 0.2); color: rgb(74, 222, 128); border: 1px solid rgba(34, 197, 94, 0.3);">
+                Active
+            </div>
+        </div>
+        <div style="font-size: 0.75rem; color: #a1a1aa;">
+            ${data.message || 'Monitoring conversations...'}
+        </div>
+    `;
+
+    return container;
+};
+
+const createGenericValidatorContent = (validatorName: string, data: any): HTMLElement => {
+    const container = document.createElement('div');
+    const score = data.score || 0;
+    const scoreColor = getScoreColor(score);
+
+    container.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <div style="font-weight: bold;">${validatorName.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+            ${score > 0 ? `
+                <div style="padding: 0.125rem 0.5rem; border-radius: 9999px; ${scoreColor}">
+                    ${score}%
+                </div>
+            ` : ''}
+        </div>
+        <div style="font-size: 0.75rem; color: #a1a1aa;">
+            ${data.message || 'Validation complete'}
+        </div>
+        ${data.suggestions && data.suggestions.length > 0 ? `
+            <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #27272a;">
+                <div style="font-size: 0.75rem; font-weight: bold; margin-bottom: 0.25rem;">Suggestions:</div>
+                ${data.suggestions.map((suggestion: string) => `
+                    <div style="font-size: 0.75rem; color: #a1a1aa;">• ${suggestion}</div>
+                `).join('')}
+            </div>
+        ` : ''}
+    `;
+
+    return container;
 };
 
 const getScoreColor = (score: number) => {
@@ -180,19 +281,19 @@ const getTrustLevel = (score: number) => {
     return 'Not Trustworthy';
 };
 
-const showTooltip = (position: { x: number; y: number }, status: 'pending' | 'evaluated' | 'evaluating' = 'pending', metrics?: any) => {
+const showTooltip = (position: { x: number; y: number }, status: 'pending' | 'evaluated' | 'evaluating' | 'validator' = 'pending', metrics?: any, validatorName?: string, validatorData?: any) => {
     if (!tooltipContainer) {
         createTooltipContainer();
     }
 
     if (tooltipContainer) {
-        createTooltipContent(status, metrics);
+        currentValidatorName = validatorName || null;
+        createTooltipContent(status, metrics, validatorName, validatorData);
         tooltipContainer.style.display = 'block';
 
-        // Position the tooltip above the response
-        const tooltipHeight = 40; // Approximate height of logo-only tooltip
+        const tooltipHeight = status === 'validator' ? 80 : 40;
         tooltipContainer.style.left = `${position.x}px`;
-        tooltipContainer.style.top = `${position.y - tooltipHeight - 10}px`; // 10px gap above the element
+        tooltipContainer.style.top = `${position.y - tooltipHeight - 10}px`;
         tooltipContainer.style.transform = 'translateX(-50%)';
     }
 };
@@ -202,12 +303,18 @@ const hideTooltip = () => {
         tooltipContainer.style.display = 'none';
     }
     isEvaluating = false;
+    currentValidatorName = null;
 };
 
-// Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
-    console.log('[GPT Evaluator Tooltip] Received message:', message);
-    if (message.type === 'SHOW_EVALUATION_TOOLTIP') {
+    console.log('[Universal Tooltip] Received message:', message);
+
+    if (message.type === 'STOP_SCANNING') {
+        hideTooltip();
+        sendResponse({ success: true });
+    }
+
+    else if (message.type === 'SHOW_EVALUATION_TOOLTIP') {
         const { position, status } = message.data;
         showTooltip(position, status);
         sendResponse({ success: true });
@@ -215,24 +322,42 @@ chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
         const { position, metrics, status } = message.data;
         if (isEvaluating || status === 'evaluated') {
             showTooltip(position, status, metrics);
-            // Reset isEvaluating flag when evaluation is complete
             if (status === 'evaluated') {
                 isEvaluating = false;
             }
-        }
-        sendResponse({ success: true });
-    } else if (message.type === 'UPDATE_TOOLTIP_POSITION') {
-        const { location } = message.data;
-        if (tooltipContainer && tooltipContainer.style.display !== 'none') {
-            const tooltipHeight = 40; // Approximate height
-            tooltipContainer.style.left = `${location.x}px`;
-            tooltipContainer.style.top = `${location.y - tooltipHeight - 10}px`;
         }
         sendResponse({ success: true });
     } else if (message.type === 'HIDE_EVALUATION_TOOLTIP') {
         hideTooltip();
         sendResponse({ success: true });
     }
+
+    else if (message.type === 'SHOW_VALIDATOR_TOOLTIP') {
+        const { position, validatorName, data } = message.data;
+        showTooltip(position, 'validator', undefined, validatorName, data);
+        sendResponse({ success: true });
+    } else if (message.type === 'UPDATE_VALIDATOR_TOOLTIP') {
+        const { position, validatorName, data } = message.data;
+        showTooltip(position, 'validator', undefined, validatorName, data);
+        sendResponse({ success: true });
+    } else if (message.type === 'HIDE_VALIDATOR_TOOLTIP') {
+        const { validatorName } = message.data || {};
+        if (!validatorName || currentValidatorName === validatorName) {
+            hideTooltip();
+        }
+        sendResponse({ success: true });
+    }
+
+    else if (message.type === 'UPDATE_TOOLTIP_POSITION') {
+        const { location } = message.data;
+        if (tooltipContainer && tooltipContainer.style.display !== 'none') {
+            const tooltipHeight = currentValidatorName ? 80 : 40;
+            tooltipContainer.style.left = `${location.x}px`;
+            tooltipContainer.style.top = `${location.y - tooltipHeight - 10}px`;
+        }
+        sendResponse({ success: true });
+    }
+
     return true;
 });
 

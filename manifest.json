@@ -24,7 +24,7 @@
                 "https://*.chatgpt.com/*"
             ],
             "js": [
-                "src/content-scripts/gpt-monitor.ts"
+                "src/content-scripts/validators/index.ts"
             ],
             "run_at": "document_idle"
         },

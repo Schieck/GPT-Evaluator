@@ -3,8 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ProviderSummary } from '../evaluation/ProviderSummary';
 import { MetricsDisplay } from '../evaluation/MetricsDisplay';
 import { useStore } from '../../store/useStore';
-import type { HistoryEntry } from '../../services/types';
-import { AIProviderType } from '../../services/types';
+import type { AIProviderType, HistoryEntry } from '../../services/types';
 
 interface HistoryDetailModalProps {
     isOpen: boolean;
@@ -115,14 +114,11 @@ export function HistoryDetailModal({ isOpen, onClose, entry }: HistoryDetailModa
                                         {/* Render instance-based results */}
                                         {entry.evaluation.instanceResults && Array.from(entry.evaluation.instanceResults.entries()).map(([instanceId, result]) => {
                                             const instance = providerInstances.find(inst => inst.id === instanceId);
-                                            const providerType = instance?.type === 'openai' ? AIProviderType.OPENAI :
-                                                instance?.type === 'claude' ? AIProviderType.CLAUDE :
-                                                    AIProviderType.OPENAI; // fallback
 
                                             return (
                                                 <ProviderSummary
                                                     key={instanceId}
-                                                    provider={providerType}
+                                                    provider={instance?.type as AIProviderType}
                                                     feedback={result.feedback}
                                                     metrics={result.metrics}
                                                     instanceName={instance?.name}

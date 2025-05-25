@@ -162,7 +162,6 @@ export const useStore = create<EvaluationState>()(
           apiConfigs: state.apiConfigs,
           providerInstances: state.providerInstances,
           foundConversations: state.foundConversations,
-          isScanning: state.isScanning,
           lastScanTime: state.lastScanTime,
           hasLegacyConfigMigrated: state.hasLegacyConfigMigrated
         })

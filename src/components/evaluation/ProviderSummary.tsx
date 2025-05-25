@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AIProviderType } from '../../services/types';
-import type { EvaluationFeedback, EvaluationMetrics } from '../../services/types';
 import { FeedbackDisplay } from './FeedbackDisplay';
 import { ValidationScore } from './ValidationScore';
 import { ClipboardIcon } from '@heroicons/react/16/solid';
+import type { AIProviderType, EvaluationFeedback, EvaluationMetrics } from '../../services/types';
 
 interface ProviderSummaryProps {
     provider: AIProviderType | string;
